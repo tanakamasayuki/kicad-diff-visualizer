@@ -16,6 +16,11 @@ def export_svgs(dst_dir_path, pcb_file_path):
     pass
 
 def extract_file(git_repo, commit_id, file_path, dst_path):
+    if commit_id is None:
+        # ワーキングツリーからファイル取得
+        shutil.copy(file_path, dst_path)
+        return
+
     rel_path = Path(file_path).relative_to(git_repo.working_tree_dir)
     '''
     subprocess を使わなくても git_repo.git.show(f'{commit_id}:{rel_path}') で

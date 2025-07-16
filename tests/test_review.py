@@ -52,7 +52,7 @@ class TestGitOperations(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
-    def test_extract_file(self):
+    def test_extract_file_from_initial_commit(self):
         # initial commit のファイル抽出
         output_path = self.tmpdir / 'extract/initial_commit.kicad_pcb'
         kidivis.review.extract_file(self.git_repo,
@@ -61,6 +61,7 @@ class TestGitOperations(unittest.TestCase):
                                     output_path)
         self.assertFalse(diff_files(output_path, kicad_files_dir / 'sample1/sample.kicad_pcb'))
 
+    def test_extract_file_from_working_tree(self):
         # ワーキングツリーのファイル抽出
         output_path = self.tmpdir / 'extract/working_tree.kicad_pcb'
         kidivis.review.extract_file(self.git_repo,
