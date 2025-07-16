@@ -70,5 +70,18 @@ class TestGitOperations(unittest.TestCase):
                                     output_path)
         self.assertFalse(diff_files(output_path, kicad_files_dir / 'sample3/sample.kicad_pcb'))
 
+class TestSVGOperations(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix='kidivis'))
+        print(f'temporary directory: {self.tmpdir}')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_export_svgs(self):
+        kidivis.review.export_svgs(self.tmpdir, kicad_files_dir / 'sample3/sample.kicad_pcb')
+        for layer in ['F_Cu', 'F_Mask', 'B_Cu', 'B_Mask', 'Edge_Cuts']:
+            self.assertTrue((self.tmpdir / f'sample-{layer}.svg').exists())
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,7 +1,7 @@
 #!/usr/bin/python3
 
 import argparse
-import itertools
+from itertools import product
 from pathlib import Path
 import shutil
 import subprocess
@@ -10,10 +10,19 @@ import tempfile
 
 import git
 
-LAYERS = list(itertools.product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])) + ['Edge.Cuts']
+LAYERS = ['.'.join(p) for p in product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])] + ['Edge.Cuts']
+KICAD_CLI = '/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe'
 
 def export_svgs(dst_dir_path, pcb_file_path):
-    pass
+    if KICAD_CLI.endswith('.exe') and not dst_dir_path.drive.startswith(r'\\wsl'):
+        # パスの変換が必要
+        path_cmd = ['wslpath', '-w', dst_dir_path]
+        dst_dir_path = subprocess.run(path_cmd, capture_output=True).stdout.strip()
+
+    export_cmd = [KICAD_CLI, 'pcb', 'export', 'svg', '--mode-multi',
+                  '--layers', ','.join(LAYERS),
+                  '--output', dst_dir_path, pcb_file_path]
+    subprocess.run(export_cmd)
 
 def extract_file(git_repo, commit_id, file_path, dst_path):
     if commit_id is None:
