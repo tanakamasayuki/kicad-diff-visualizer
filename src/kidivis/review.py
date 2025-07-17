@@ -129,7 +129,7 @@ def main():
         print(f'temporary directory: {tmp_dir_path}')
 
         jinja_env = jinja2.Environment(
-            loader=jinja2.FileSystemLoader(Path(__file__).parent / 'templates'),
+            loader=jinja2.FileSystemLoader(str(Path(__file__).parent / 'templates')),
             autoescape=jinja2.select_autoescape()
         )
         pcb_path = Path(args.pcb_file)
