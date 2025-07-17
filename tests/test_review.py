@@ -63,7 +63,7 @@ class TestGitOperations(unittest.TestCase):
 
     def test_extract_file_from_working_tree(self):
         # ワーキングツリーのファイル抽出
-        output_path = self.tmpdir / 'extract/working_tree.kicad_pcb'
+        output_path = self.tmpdir / 'WORK' / 'extract/working_tree.kicad_pcb'
         kidivis.review.extract_file(self.git_repo,
                                     None,
                                     self.tmpdir / 'repo/sample.kicad_pcb',

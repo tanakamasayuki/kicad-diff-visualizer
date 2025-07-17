@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <title>KiCad PCB Diff</title>
+</head>
+<body>
+
+<label for="old-commit">diff base (old commit):</label>
+<select id="old-commit">
+  <option value="HEAD" selected></option>
+  <option value="dummy-commit"></option>
+</select>
+
+<label for="new-commit">diff target (new commit):</label>
+<select id="new-commit">
+  <option value="WORK" selected></option>
+  <option value="HEAD"></option>
+</select>
+
+<ul>
+  <li><a href="/HEAD/WORK/F.Cu">F.Cu</a></li>
+  <li><a href="/HEAD/WORK/F.Silkscreen">F.Silkscreen</a></li>
+  <li><a href="/HEAD/WORK/F.Mask">F.Mask</a></li>
+  <li><a href="/HEAD/WORK/B.Cu">B.Cu</a></li>
+  <li><a href="/HEAD/WORK/B.Silkscreen">B.Silkscreen</a></li>
+  <li><a href="/HEAD/WORK/B.Mask">B.Mask</a></li>
+  <li><a href="/HEAD/WORK/Edge.Cuts">Edge.Cuts</a></li>
+</ul>
+
+<form id="image-selector">
+<fieldset>
+  <legend>Select image:</legend>
+
+  <div>
+    <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
+    <label for="show-bottom">Bottom</label>
+  </div>
+
+  <div>
+    <input type="radio" name="imagesel" id="show-top" value="show-top" />
+    <label for="show-top">Top</label>
+  </div>
+
+  <div>
+    <input type="radio" name="imagesel" id="show-both" value="show-both" />
+    <label for="show-both">Both</label>
+  </div>
+</fieldset>
+</form>
+
+{{svg | safe}}
+
+<script>
+  document.getElementById("show-bottom").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      document.getElementById("bottom-g").style.opacity = 1;
+      document.getElementById("top-g").style.opacity = 0;
+    }
+  });
+  document.getElementById("show-top").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      document.getElementById("bottom-g").style.opacity = 0;
+      document.getElementById("top-g").style.opacity = 1;
+    }
+  });
+  document.getElementById("show-both").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      document.getElementById("bottom-g").style.opacity = 1;
+      document.getElementById("top-g").style.opacity = 1;
+    }
+  });
+</script>
+</body>
+</html>
