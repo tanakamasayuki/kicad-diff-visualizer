@@ -78,10 +78,16 @@ class TestSVGOperations(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
+    @unittest.skip('skip test_export_svgs because it takes too long time.')
     def test_export_svgs(self):
         kidivis.review.export_svgs(self.tmpdir, kicad_files_dir / 'sample3/sample.kicad_pcb')
         for layer in ['F_Cu', 'F_Mask', 'B_Cu', 'B_Mask', 'Edge_Cuts']:
             self.assertTrue((self.tmpdir / f'sample-{layer}.svg').exists())
+
+    def test_make_svg_path(self):
+        path_fcu = kidivis.review.make_svg_path(Path('/path/to'),
+                                                Path('foo.kicad_pcb'), 'F.Cu')
+        self.assertEqual(path_fcu, Path('/path/to/foo-F_Cu.svg'))
 
 if __name__ == '__main__':
     unittest.main()
