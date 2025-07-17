@@ -137,6 +137,10 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             target_svg = f.read()
 
         overlayed_svg = diffimg.overlay_two_svgs(base_svg, target_svg, True)
+        if overlayed_svg.startswith('<svg'):
+            overlayed_svg = overlayed_svg[:4] + ' id="overlayed_svg"' + overlayed_svg[4:]
+        else:
+            print(f'Waring: overlayed_svg does not start with "<svg": {overlayed_svg[:10]}...')
 
         t = self.jinja_env.get_template('diffpcb.html')
         s = t.render(svg=overlayed_svg).encode('utf-8')

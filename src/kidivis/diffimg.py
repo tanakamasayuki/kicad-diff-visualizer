@@ -118,7 +118,7 @@ def overlay_two_svgs(bottom_svg, top_svg, only_svg_tag):
         '<g id="bottom-g">',
         svg_old_replaced,
         '</g>',
-        '<g id="top-g" style="mix-blend-mode:normal;">',
+        '<g id="top-g" style="mix-blend-mode:screen;">',
         svg_new_replaced,
         '</g>',
         '</svg>',

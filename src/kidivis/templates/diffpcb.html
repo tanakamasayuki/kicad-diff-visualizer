@@ -28,48 +28,136 @@
   <li><a href="/HEAD/WORK/Edge.Cuts">Edge.Cuts</a></li>
 </ul>
 
-<form id="image-selector">
 <fieldset>
   <legend>Select image:</legend>
 
-  <div>
-    <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
-    <label for="show-bottom">Bottom</label>
-  </div>
+  <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
+  <label for="show-bottom">Bottom</label>
 
-  <div>
-    <input type="radio" name="imagesel" id="show-top" value="show-top" />
-    <label for="show-top">Top</label>
-  </div>
+  <input type="radio" name="imagesel" id="show-top" value="show-top" />
+  <label for="show-top">Top</label>
 
-  <div>
-    <input type="radio" name="imagesel" id="show-both" value="show-both" />
-    <label for="show-both">Both</label>
-  </div>
+  <input type="radio" name="imagesel" id="show-both" value="show-both" checked />
+  <label for="show-both">Both</label>
 </fieldset>
-</form>
+
+<fieldset>
+<label for="svg-zoom">Scale: </label>
+<input type="range" id="svg-zoom" min="0.1" max="5" step="0.1" value="1">
+<span id="svg-zoom-pct">100</span>
+<span>%</span>
+</fieldset>
+
+<fieldset>
+  <legend>Visualization mode:</legend>
+
+  <input type="radio" name="visualmode" id="vm-diff" value="vm-diff" checked />
+  <label for="vm-diff">Diff</label>
+
+  <input type="radio" name="visualmode" id="vm-overlay" value="vm-overlay" />
+  <label for="vm-overlay">Overlay</label>
+
+  <input type="radio" name="visualmode" id="vm-blend" value="vm-blend" />
+  <label for="vm-blend">Blend</label>
+</fieldset>
 
 {{svg | safe}}
 
 <script>
-  document.getElementById("show-bottom").addEventListener("change", (event) => {
-    if (event.srcElement.checked) {
-      document.getElementById("bottom-g").style.opacity = 1;
-      document.getElementById("top-g").style.opacity = 0;
+
+const bottom_g = document.getElementById("bottom-g");
+const top_g = document.getElementById("top-g");
+
+document.getElementById("show-bottom").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    bottom_g.style.opacity = 1;
+    top_g.style.opacity = 0;
+  }
+});
+document.getElementById("show-top").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    bottom_g.style.opacity = 0;
+    top_g.style.opacity = 1;
+  }
+});
+document.getElementById("show-both").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    bottom_g.style.opacity = 1;
+    top_g.style.opacity = 1;
+  }
+});
+
+const overlayed_svg = document.getElementById("overlayed_svg");
+const original_width = overlayed_svg.width.baseVal.value;
+const original_height = overlayed_svg.height.baseVal.value;
+console.log("original size: ", original_width, original_height);
+
+const svg_zoom = document.getElementById("svg-zoom");
+var current_zoom = parseFloat(svg_zoom.value);
+
+function scaleSVG(new_zoom) {
+  const scale = Math.pow(2, new_zoom - 1);
+  console.log("scaleSVG", `current_zoom=${current_zoom} new_zoom=${new_zoom} scale=${scale}`);
+  const width = original_width * scale;
+  const height = original_height * scale;
+  console.log("setting new size:", width, height);
+  overlayed_svg.setAttribute("width", width);
+  overlayed_svg.setAttribute("height", height);
+  document.getElementById("svg-zoom-pct").textContent = scale * 100;
+
+  current_zoom = new_zoom;
+  svg_zoom.value = current_zoom;
+}
+
+svg_zoom.addEventListener("input", (event) => {
+  console.log(event);
+  const new_zoom = svg_zoom.value;
+  scaleSVG(new_zoom);
+});
+
+window.addEventListener("wheel", (e) => {
+  // マウススクロールで倍率変更
+  if (e.ctrlKey) {
+    e.preventDefault();  // ページ全体のズームを防止
+    console.log("deltaY", e.deltaY);
+
+    var delta_y = e.deltaY;
+    switch (e.deltaMode) {
+      case 0: // px
+        delta_y /= 100;
+        break;
+      case 1: // line
+        delta_y /= 3;
+        break;
+      case 2: // page
+        break;
     }
-  });
-  document.getElementById("show-top").addEventListener("change", (event) => {
-    if (event.srcElement.checked) {
-      document.getElementById("bottom-g").style.opacity = 0;
-      document.getElementById("top-g").style.opacity = 1;
-    }
-  });
-  document.getElementById("show-both").addEventListener("change", (event) => {
-    if (event.srcElement.checked) {
-      document.getElementById("bottom-g").style.opacity = 1;
-      document.getElementById("top-g").style.opacity = 1;
-    }
-  });
+
+    const zoom_delta = (-delta_y) * 0.2;
+    console.log("zoom_delta", zoom_delta);
+    scaleSVG(current_zoom + zoom_delta);
+  }
+}, { passive: false });
+
+document.getElementById("vm-diff").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    top_g.style.mixBlendMode = "screen";
+    top_g.style.opacity = 1;
+  }
+});
+document.getElementById("vm-overlay").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    top_g.style.mixBlendMode = "normal";
+    top_g.style.opacity = 1;
+  }
+});
+document.getElementById("vm-blend").addEventListener("change", (event) => {
+  if (event.srcElement.checked) {
+    top_g.style.mixBlendMode = "normal";
+    top_g.style.opacity = 0.8;
+  }
+});
+
 </script>
 </body>
 </html>
