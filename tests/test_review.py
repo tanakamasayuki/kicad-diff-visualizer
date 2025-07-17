@@ -84,10 +84,9 @@ class TestSVGOperations(unittest.TestCase):
         for layer in ['F_Cu', 'F_Mask', 'B_Cu', 'B_Mask', 'Edge_Cuts']:
             self.assertTrue((self.tmpdir / f'sample-{layer}.svg').exists())
 
-    def test_make_svg_path(self):
-        path_fcu = kidivis.review.make_svg_path(Path('/path/to'),
-                                                Path('foo.kicad_pcb'), 'F.Cu')
-        self.assertEqual(path_fcu, Path('/path/to/foo-F_Cu.svg'))
+    def test_make_svg_filename(self):
+        name_fcu = kidivis.review.make_svg_filename(Path('foo.kicad_pcb'), 'F.Cu')
+        self.assertEqual(name_fcu, 'foo-F_Cu.svg')
 
 if __name__ == '__main__':
     unittest.main()
