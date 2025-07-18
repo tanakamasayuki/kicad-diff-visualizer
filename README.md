@@ -19,3 +19,5 @@ The server is showing the difference of the PCB design.
 ## How to use
 
     $ ./run_server.sh /path/to/kicad_pcb
+
+Then, open http://localhost:8000/ with a Web browser.
