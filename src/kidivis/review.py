@@ -102,7 +102,7 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
 
-        diff_base, diff_target, layer = path.parts[1:]
+        diff_base, diff_target, layer = [urllib.parse.unquote(p) for p in path.parts[1:]]
         if layer not in LAYERS:
             self.send_response(http.HTTPStatus.NOT_FOUND)
             self.end_headers()
