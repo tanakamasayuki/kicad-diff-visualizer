@@ -5,6 +5,8 @@ A tool to visualize differences of two PCB patterns created by KiCad
 
 - GitPython >= 3.0
   - Ubuntu: `sudo apt install python3-git`
+- Jinja >= 2.10
+  - Ubuntu: `sudo apt install python3-jinja2`
 
 ## Screenshot
 
