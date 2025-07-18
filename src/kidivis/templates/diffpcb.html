@@ -21,7 +21,7 @@
 <button id="change-commit-button">Change commits</button>
 
 
-<fieldset>
+<fieldset id="imagesel-set" disabled>
   <legend>Select image:</legend>
 
   <select id="layer-select">
@@ -40,14 +40,14 @@
   <label for="show-both">Both</label>
 </fieldset>
 
-<fieldset>
+<fieldset id="svg-zoom-set" disabled>
 <label for="svg-zoom">Scale: </label>
 <input type="range" id="svg-zoom" min="0.1" max="5" step="0.1" value="1">
 <span id="svg-zoom-pct">100</span>
 <span>%</span>
 </fieldset>
 
-<fieldset>
+<fieldset id="vm-set" disabled>
   <legend>Visualization mode:</legend>
 
   <input type="radio" name="visualmode" id="vm-diff" value="vm-diff" checked />
@@ -60,41 +60,24 @@
   <label for="vm-blend">Blend</label>
 </fieldset>
 
-{{svg | safe}}
+<div id="pcb-image-div" aria-busy="true" aria-describedby="img-load-progress">
+</div>
+
+<progress id="img-load-progress" aria-label="loading an SVG image..." />
 
 <script>
 
-const bottom_g = document.getElementById("bottom-g");
-const top_g = document.getElementById("top-g");
 
-document.getElementById("show-bottom").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    bottom_g.style.opacity = 1;
-    top_g.style.opacity = 0;
-  }
-});
-document.getElementById("show-top").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    bottom_g.style.opacity = 0;
-    top_g.style.opacity = 1;
-  }
-});
-document.getElementById("show-both").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    bottom_g.style.opacity = 1;
-    top_g.style.opacity = 1;
-  }
-});
-
-const overlayed_svg = document.getElementById("overlayed_svg");
-const original_width = overlayed_svg.width.baseVal.value;
-const original_height = overlayed_svg.height.baseVal.value;
-console.log("original size: ", original_width, original_height);
+var original_width = null;
+var original_height = null;
 
 const svg_zoom = document.getElementById("svg-zoom");
 var current_zoom = parseFloat(svg_zoom.value);
 
 function scaleSVG(new_zoom) {
+  // 画像は遅延読み込みなので、ここで取得
+  const overlayed_svg = document.getElementById("overlayed_svg");
+
   const scale = Math.pow(2, new_zoom - 1);
   console.log("scaleSVG", `current_zoom=${current_zoom} new_zoom=${new_zoom} scale=${scale}`);
   const width = original_width * scale;
@@ -144,35 +127,81 @@ document.getElementById("layer-select").addEventListener("change", (event) => {
   window.location.href = `./${layer_select.value}`;
 });
 
-document.getElementById("vm-diff").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    top_g.style.mixBlendMode = "screen";
-    top_g.style.opacity = 1;
-  }
-});
-document.getElementById("vm-overlay").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    top_g.style.mixBlendMode = "normal";
-    top_g.style.opacity = 1;
-  }
-});
-document.getElementById("vm-blend").addEventListener("change", (event) => {
-  if (event.srcElement.checked) {
-    top_g.style.mixBlendMode = "normal";
-    top_g.style.opacity = 0.8;
-  }
-});
 
 const base_commit = document.getElementById("base-commit");
 const target_commit = document.getElementById("target-commit");
 
 document.getElementById("change-commit-button").addEventListener("click", (event) => {
-  const base_commit_id = encodeURIComponent(base_commit.value);
-  const target_commit_id = encodeURIComponent(target_commit.value);
   const selected_layer = layer_select.value;
   console.log("selected layer = ", selected_layer);
-  window.location.href = `/${base_commit_id}/${target_commit_id}/${selected_layer}`;
+  const base_commit_id = base_commit.value;
+  const target_commit_id = target_commit.value;
+  window.location.href = `/diff/${base_commit_id}/${target_commit_id}/${selected_layer}`;
 });
+
+function onload_pcb_image(svg_text) {
+  console.log("pcb image loaded");
+  document.getElementById("pcb-image-div").innerHTML = svg_text;
+  document.getElementById("pcb-image-div").setAttribute("aria-busy", "false");
+  document.getElementById("img-load-progress").style.display = "none";
+
+  const overlayed_svg = document.getElementById("overlayed_svg");
+  console.log(overlayed_svg);
+  original_width = overlayed_svg.width.baseVal.value;
+  original_height = overlayed_svg.height.baseVal.value;
+  console.log("original size: ", original_width, original_height);
+
+  const bottom_g = document.getElementById("bottom-g");
+  const top_g = document.getElementById("top-g");
+
+  document.getElementById("show-bottom").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      bottom_g.style.opacity = 1;
+      top_g.style.opacity = 0;
+    }
+  });
+  document.getElementById("show-top").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      bottom_g.style.opacity = 0;
+      top_g.style.opacity = 1;
+    }
+  });
+  document.getElementById("show-both").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      bottom_g.style.opacity = 1;
+      top_g.style.opacity = 1;
+    }
+  });
+
+  document.getElementById("vm-diff").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      top_g.style.mixBlendMode = "screen";
+      top_g.style.opacity = 1;
+    }
+  });
+  document.getElementById("vm-overlay").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      top_g.style.mixBlendMode = "normal";
+      top_g.style.opacity = 1;
+    }
+  });
+  document.getElementById("vm-blend").addEventListener("change", (event) => {
+    if (event.srcElement.checked) {
+      top_g.style.mixBlendMode = "normal";
+      top_g.style.opacity = 0.8;
+    }
+  });
+
+  ["imagesel-set", "svg-zoom-set", "vm-set"].forEach(id => {
+    document.getElementById(id).removeAttribute("disabled");
+  });
+
+}
+
+const pcb_image_path = "/image/{{base_commit_id}}/{{target_commit_id}}/{{layer}}.svg";
+fetch(pcb_image_path)
+  .then(res => res.text())
+  .then(svg_text => onload_pcb_image(svg_text));
 
 </script>
 </body>

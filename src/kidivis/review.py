@@ -75,6 +75,71 @@ def make_svg_filename(pcb_file_name, layer_name):
     l = layer_name.replace('.', '_')
     return f'{Path(pcb_file_name).stem}-{l}.svg'
 
+def action_image(req, diff_base, diff_target, filename):
+    if not filename.endswith('.svg'):
+        req.send_response(http.HTTPStatus.NOT_FOUND)
+        req.end_headers()
+        return
+
+    layer = filename[:-4]
+
+    base_dir = req.tmp_dir_path / diff_base
+    target_dir = req.tmp_dir_path / diff_target
+    pcb_filename = req.pcb_path.name
+
+    base_pcb_path = base_dir / pcb_filename
+    target_pcb_path = target_dir / pcb_filename
+    extract_file(req.git_repo,
+                 diff_base,
+                 req.pcb_path,
+                 base_pcb_path)
+    extract_file(req.git_repo,
+                 None if diff_target == 'WORK' else diff_target,
+                 req.pcb_path,
+                 target_pcb_path)
+
+    base_svg_path = base_dir / make_svg_filename(req.pcb_path.name, layer)
+    target_svg_path = target_dir / make_svg_filename(req.pcb_path.name, layer)
+
+    if not base_svg_path.exists():
+        export_svgs(base_dir, base_pcb_path)
+    if not target_svg_path.exists():
+        export_svgs(target_dir, target_pcb_path)
+
+    with open(base_svg_path) as f:
+        base_svg = f.read()
+    with open(target_svg_path) as f:
+        target_svg = f.read()
+
+    overlayed_svg = diffimg.overlay_two_svgs(base_svg, target_svg, True)
+    if overlayed_svg.startswith('<svg'):
+        overlayed_svg = overlayed_svg[:4] + ' id="overlayed_svg"' + overlayed_svg[4:]
+    else:
+        print(f'Waring: overlayed_svg does not start with "<svg": {overlayed_svg[:10]}...')
+
+    encoded_svg = overlayed_svg.encode('utf-8')
+
+    req.send_response(200)
+    req.send_header('Content-Type', 'image/svg+xml')
+    req.send_header('Content-Length', len(encoded_svg))
+    req.end_headers()
+    req.wfile.write(encoded_svg)
+
+def action_diff(req, diff_base, diff_target, layer):
+    if layer not in LAYERS:
+        req.send_response(http.HTTPStatus.NOT_FOUND)
+        req.end_headers()
+        return
+
+
+    t = req.jinja_env.get_template('diffpcb.html')
+    s = t.render(base_commit_id=diff_base, target_commit_id=diff_target, layer=layer).encode('utf-8')
+    req.send_response(200)
+    req.send_header('Content-Type', 'text/html')
+    req.send_header('Content-Length', len(s))
+    req.end_headers()
+    req.wfile.write(s)
+
 class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, *args, **kwargs):
         self.tmp_dir_path = tmp_dir_path
@@ -91,64 +156,29 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
         if parts.path == '/':
             self.send_response(http.HTTPStatus.MOVED_PERMANENTLY)
-            self.send_header('Location', '/HEAD/WORK/F.Cu')
+            self.send_header('Location', '/diff/HEAD/WORK/F.Cu')
             self.end_headers()
             return
 
         path = Path(parts.path)
+        num_parts = len(path.parts)
 
-        if path.parts[0] != '/' or len(path.parts) != 4:
+        if path.parts[0] != '/' or num_parts <= 1:
             self.send_response(http.HTTPStatus.NOT_FOUND)
             self.end_headers()
             return
 
-        diff_base, diff_target, layer = [urllib.parse.unquote(p) for p in path.parts[1:]]
-        if layer not in LAYERS:
+        action = path.parts[1]
+        if (action == 'image' or action == 'diff') and num_parts != 5:
             self.send_response(http.HTTPStatus.NOT_FOUND)
             self.end_headers()
             return
 
-        base_dir = self.tmp_dir_path / diff_base
-        target_dir = self.tmp_dir_path / diff_target
-        pcb_filename = self.pcb_path.name
-
-        base_pcb_path = base_dir / pcb_filename
-        target_pcb_path = target_dir / pcb_filename
-        extract_file(self.git_repo,
-                     diff_base,
-                     self.pcb_path,
-                     base_pcb_path)
-        extract_file(self.git_repo,
-                     None if diff_target == 'WORK' else diff_target,
-                     self.pcb_path,
-                     target_pcb_path)
-
-        base_svg_path = base_dir / make_svg_filename(self.pcb_path.name, layer)
-        target_svg_path = target_dir / make_svg_filename(self.pcb_path.name, layer)
-
-        if not base_svg_path.exists():
-            export_svgs(base_dir, base_pcb_path)
-        if not target_svg_path.exists():
-            export_svgs(target_dir, target_pcb_path)
-
-        with open(base_svg_path) as f:
-            base_svg = f.read()
-        with open(target_svg_path) as f:
-            target_svg = f.read()
-
-        overlayed_svg = diffimg.overlay_two_svgs(base_svg, target_svg, True)
-        if overlayed_svg.startswith('<svg'):
-            overlayed_svg = overlayed_svg[:4] + ' id="overlayed_svg"' + overlayed_svg[4:]
-        else:
-            print(f'Waring: overlayed_svg does not start with "<svg": {overlayed_svg[:10]}...')
-
-        t = self.jinja_env.get_template('diffpcb.html')
-        s = t.render(base_commit_id=diff_base, target_commit_id=diff_target, layer=layer, svg=overlayed_svg).encode('utf-8')
-        self.send_response(200)
-        self.send_header('Content-Type', 'text/html')
-        self.send_header('Content-Length', len(s))
-        self.end_headers()
-        self.wfile.write(s)
+        args = [urllib.parse.unquote(p) for p in path.parts[2:]]
+        if action == 'image':
+            action_image(self, *args)
+        elif action == 'diff':
+            action_diff(self, *args)
 
 def handler_factory(*f_args, **f_kwargs):
     def create(*args, **kwargs):
