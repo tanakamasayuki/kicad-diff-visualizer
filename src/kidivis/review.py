@@ -216,7 +216,6 @@ def main():
 
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
-    print(f'log level {logger.level}')
 
     git_repo = git.Repo(args.pcb_file, search_parent_directories=True)
 
@@ -237,11 +236,7 @@ def main():
         with http.server.HTTPServer((args.host, args.port), create_handler) as server:
             print(f'Serving HTTP on {args.host} port {args.port}'
                   + f' (http://{args.host}:{args.port}/) ...')
-            try:
-                server.serve_forever()
-            except KeyboardInterrupt:
-                input('press enter to exit...')
-                raise
+            server.serve_forever()
 
     sys.exit(0)
 
