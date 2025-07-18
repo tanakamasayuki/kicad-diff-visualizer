@@ -6,6 +6,14 @@ A tool to visualize differences of two PCB patterns created by KiCad
 - GitPython >= 3.0
   - Ubuntu: `sudo apt install python3-git`
 
+## Screenshot
+
+![](doc/screenshot_server.png)
+
+The server is showing the difference of the PCB design.
+- White area means no diff.
+- Red/blue area is only in the old/new design.
+
 ## How to use
 
     $ ./run_server.sh /path/to/kicad_pcb

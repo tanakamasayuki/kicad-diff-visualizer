@@ -20,45 +20,46 @@
 
 <button id="change-commit-button">Change commits</button>
 
+<div class="fieldset-wrapper" style="display: flex;">
 
-<fieldset id="imagesel-set" disabled>
-  <legend>Select image:</legend>
+  <fieldset id="imagesel-set" disabled>
+    <legend>Select image:</legend>
 
-  <select id="layer-select">
-    {% for l in ['F.Cu', 'F.Silkscreen', 'F.Mask', 'B.Cu', 'B.Silkscreen', 'B.Mask', 'Edge.Cuts'] %}
-    <option value="{{l}}" {% if l == layer %}selected{% endif %}>{{l}}</option>
-    {% endfor %}
-  </select>
+    <select id="layer-select">
+      {% for l in ['F.Cu', 'F.Silkscreen', 'F.Mask', 'B.Cu', 'B.Silkscreen', 'B.Mask', 'Edge.Cuts'] %}
+      <option value="{{l}}" {% if l == layer %}selected{% endif %}>{{l}}</option>
+      {% endfor %}
+    </select>
 
-  <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
-  <label for="show-bottom">Bottom</label>
+    <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
+    <label for="show-bottom">Bottom</label>
 
-  <input type="radio" name="imagesel" id="show-top" value="show-top" />
-  <label for="show-top">Top</label>
+    <input type="radio" name="imagesel" id="show-top" value="show-top" />
+    <label for="show-top">Top</label>
 
-  <input type="radio" name="imagesel" id="show-both" value="show-both" checked />
-  <label for="show-both">Both</label>
-</fieldset>
+    <input type="radio" name="imagesel" id="show-both" value="show-both" checked />
+    <label for="show-both">Both</label>
+  </fieldset>
 
-<fieldset id="svg-zoom-set" disabled>
-<label for="svg-zoom">Scale: </label>
-<input type="range" id="svg-zoom" min="0.1" max="5" step="0.1" value="1">
-<span id="svg-zoom-pct">100</span>
-<span>%</span>
-</fieldset>
+  <fieldset id="vm-set" disabled>
+    <label for="svg-zoom">Scale: </label>
+    <input type="range" id="svg-zoom" min="0.1" max="5" step="0.1" value="1">
+    <span id="svg-zoom-pct">100</span>
+    <span>%</span>
 
-<fieldset id="vm-set" disabled>
-  <legend>Visualization mode:</legend>
+    <legend>Visualization mode:</legend>
 
-  <input type="radio" name="visualmode" id="vm-diff" value="vm-diff" checked />
-  <label for="vm-diff">Diff</label>
+    <input type="radio" name="visualmode" id="vm-diff" value="vm-diff" checked />
+    <label for="vm-diff">Diff</label>
 
-  <input type="radio" name="visualmode" id="vm-overlay" value="vm-overlay" />
-  <label for="vm-overlay">Overlay</label>
+    <input type="radio" name="visualmode" id="vm-overlay" value="vm-overlay" />
+    <label for="vm-overlay">Overlay</label>
 
-  <input type="radio" name="visualmode" id="vm-blend" value="vm-blend" />
-  <label for="vm-blend">Blend</label>
-</fieldset>
+    <input type="radio" name="visualmode" id="vm-blend" value="vm-blend" />
+    <label for="vm-blend">Blend</label>
+  </fieldset>
+
+</div>
 
 <div id="pcb-image-div" aria-busy="true" aria-describedby="img-load-progress">
 </div>
@@ -85,7 +86,7 @@ function scaleSVG(new_zoom) {
   console.log("setting new size:", width, height);
   overlayed_svg.setAttribute("width", width);
   overlayed_svg.setAttribute("height", height);
-  document.getElementById("svg-zoom-pct").textContent = scale * 100;
+  document.getElementById("svg-zoom-pct").textContent = (scale * 100).toFixed(0);
 
   current_zoom = new_zoom;
   svg_zoom.value = current_zoom;
@@ -192,7 +193,7 @@ function onload_pcb_image(svg_text) {
     }
   });
 
-  ["imagesel-set", "svg-zoom-set", "vm-set"].forEach(id => {
+  ["imagesel-set", "vm-set"].forEach(id => {
     document.getElementById(id).removeAttribute("disabled");
   });
 
