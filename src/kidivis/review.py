@@ -3,12 +3,14 @@
 import argparse
 import http.server
 from itertools import product
+import logging
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import tempfile
 import urllib.parse
+import uuid
 
 import git
 import jinja2
@@ -17,6 +19,8 @@ from . import diffimg
 
 LAYERS = ['.'.join(p) for p in product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])] + ['Edge.Cuts']
 KICAD_CLI = '/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe'
+
+logger = logging.getLogger(__name__)
 
 def convert_path_to_windows(file_path):
     path_cmd = ['wslpath', '-w', file_path]
@@ -44,11 +48,11 @@ def export_svgs(dst_dir_path, pcb_file_path):
                   '--output', str(dst_dir_path), str(pcb_file_path)]
     res = subprocess.run(export_cmd)
     if res.returncode != 0:
-        print(f'failed to export SVGs: args={res.args}')
+        logger.error('failed to export SVGs: args=%s', res.args)
         res.check_returncode()
 
 def extract_file(git_repo, commit_id, file_path, dst_path):
-    print(f'extracting file: commit={commit_id} file={file_path} dst={dst_path}')
+    logger.debug('extracting file: commit=%s file=%s dst=%s', commit_id, file_path, dst_path)
     if dst_path.exists():
         return
 
@@ -77,8 +81,7 @@ def make_svg_filename(pcb_file_name, layer_name):
 
 def action_image(req, diff_base, diff_target, filename):
     if not filename.endswith('.svg'):
-        req.send_response(http.HTTPStatus.NOT_FOUND)
-        req.end_headers()
+        req.send_error(http.HTTPStatus.NOT_FOUND)
         return
 
     layer = filename[:-4]
@@ -115,7 +118,7 @@ def action_image(req, diff_base, diff_target, filename):
     if overlayed_svg.startswith('<svg'):
         overlayed_svg = overlayed_svg[:4] + ' id="overlayed_svg"' + overlayed_svg[4:]
     else:
-        print(f'Waring: overlayed_svg does not start with "<svg": {overlayed_svg[:10]}...')
+        logger.warning('overlayed_svg does not start with "<svg": %s', overlayed_svg[:10])
 
     encoded_svg = overlayed_svg.encode('utf-8')
 
@@ -127,10 +130,8 @@ def action_image(req, diff_base, diff_target, filename):
 
 def action_diff(req, diff_base, diff_target, layer):
     if layer not in LAYERS:
-        req.send_response(http.HTTPStatus.NOT_FOUND)
-        req.end_headers()
+        req.send_error(http.HTTPStatus.NOT_FOUND)
         return
-
 
     t = req.jinja_env.get_template('diffpcb.html')
     s = t.render(base_commit_id=diff_base, target_commit_id=diff_target, layer=layer).encode('utf-8')
@@ -141,66 +142,91 @@ def action_diff(req, diff_base, diff_target, layer):
     req.wfile.write(s)
 
 class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
+    protocol_version = 'HTTP/1.1'
+    timeout = 0.5
+    '''
+    ThreadingHTTPServerを使う方が本質的な解消ができると思うが、
+    マルチスレッドの複雑さやログが入り乱れることを避けるために
+    ソケットのタイムアウト設定で凌ぐことにする。
+    '''
+
     def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, *args, **kwargs):
         self.tmp_dir_path = tmp_dir_path
         self.git_repo = git_repo
         self.jinja_env = jinja_env
         self.pcb_path = pcb_path
+        self.traceid = uuid.uuid4()
+
+        logger.debug('HTTPRequestHandler.__init__(%s): args=%s kwargs=%s', self.traceid, args, kwargs)
 
         # 親クラスの __init__ は、その中で do_x が実行されるため、最後に呼び出す
         super().__init__(*args, **kwargs)
 
     def do_GET(self):
-        print(f'do_GET path={self.path}')
-        parts = urllib.parse.urlparse(self.path)
+        logger.info('do_GET path=%s traceid=%s', self.path, self.traceid)
+        try:
+            parts = urllib.parse.urlparse(self.path)
 
-        if parts.path == '/':
-            self.send_response(http.HTTPStatus.MOVED_PERMANENTLY)
-            self.send_header('Location', '/diff/HEAD/WORK/F.Cu')
-            self.end_headers()
+            if parts.path == '/':
+                self.send_response(http.HTTPStatus.MOVED_PERMANENTLY)
+                self.send_header('Location', '/diff/HEAD/WORK/F.Cu')
+                self.end_headers()
+                return
+
+            path = Path(parts.path)
+            num_parts = len(path.parts)
+
+            if path.parts[0] != '/' or num_parts <= 1:
+                self.send_error(http.HTTPStatus.NOT_FOUND)
+                return
+
+            action = path.parts[1]
+            if (action == 'image' or action == 'diff') and num_parts != 5:
+                self.send_error(http.HTTPStatus.NOT_FOUND)
+                return
+
+            args = [urllib.parse.unquote(p) for p in path.parts[2:]]
+            if action == 'image':
+                action_image(self, *args)
+                return
+            elif action == 'diff':
+                action_diff(self, *args)
+                return
+
+            self.send_error(http.HTTPStatus.NOT_FOUND)
             return
 
-        path = Path(parts.path)
-        num_parts = len(path.parts)
-
-        if path.parts[0] != '/' or num_parts <= 1:
-            self.send_response(http.HTTPStatus.NOT_FOUND)
-            self.end_headers()
-            return
-
-        action = path.parts[1]
-        if (action == 'image' or action == 'diff') and num_parts != 5:
-            self.send_response(http.HTTPStatus.NOT_FOUND)
-            self.end_headers()
-            return
-
-        args = [urllib.parse.unquote(p) for p in path.parts[2:]]
-        if action == 'image':
-            action_image(self, *args)
-        elif action == 'diff':
-            action_diff(self, *args)
+        finally:
+            logger.debug('do_GET end. path=%s traceid=%s', self.path, self.traceid)
 
 def handler_factory(*f_args, **f_kwargs):
     def create(*args, **kwargs):
         return HTTPRequestHandler(*f_args, *args, **f_kwargs, **kwargs)
     return create
 
+LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument('--port', default=8000, type=int, help='server port number')
     p.add_argument('--host', default='0.0.0.0', help='server host address')
+    p.add_argument('--log-level', default='info', choices=LOG_LEVELS, help='change logging level')
     p.add_argument('pcb_file', help='A path to .kicad_pcb file to be reviewed')
     args = p.parse_args()
+
+    log_level = getattr(logging, args.log_level.upper())
+    logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
+    print(f'log level {logger.level}')
 
     git_repo = git.Repo(args.pcb_file, search_parent_directories=True)
 
     # Git ワーキングツリーのルート
     git_root = Path(git_repo.working_tree_dir)
-    print(f'git work tree: {git_root}')
+    logger.info('git work tree: %s', git_root)
 
     with tempfile.TemporaryDirectory(prefix='kidivis') as td:
         tmp_dir_path = Path(td)
-        print(f'temporary directory: {tmp_dir_path}')
+        logger.info('temporary directory: %s', tmp_dir_path)
 
         jinja_env = jinja2.Environment(
             loader=jinja2.FileSystemLoader(str(Path(__file__).parent / 'templates')),
