@@ -143,7 +143,7 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
             print(f'Waring: overlayed_svg does not start with "<svg": {overlayed_svg[:10]}...')
 
         t = self.jinja_env.get_template('diffpcb.html')
-        s = t.render(svg=overlayed_svg).encode('utf-8')
+        s = t.render(base_commit_id=diff_base, target_commit_id=diff_target, layer=layer, svg=overlayed_svg).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'text/html')
         self.send_header('Content-Length', len(s))

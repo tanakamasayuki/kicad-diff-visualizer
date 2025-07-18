@@ -6,30 +6,29 @@
 </head>
 <body>
 
-<label for="old-commit">diff base (old commit):</label>
-<select id="old-commit">
-  <option value="HEAD" selected></option>
-  <option value="dummy-commit"></option>
-</select>
+<datalist id="named-commit">
+　<option value="WORK">
+  <option value="HEAD">
+  <option value="HEAD^">
+</datalist>
 
-<label for="new-commit">diff target (new commit):</label>
-<select id="new-commit">
-  <option value="WORK" selected></option>
-  <option value="HEAD"></option>
-</select>
+<label for="base-commit">diff base (old commit):</label>
+<input type="text" id="base-commit" list="named-commit" placeholder="input or choose" value="{{base_commit_id}}" autocomplete="off" />
 
-<ul>
-  <li><a href="/HEAD/WORK/F.Cu">F.Cu</a></li>
-  <li><a href="/HEAD/WORK/F.Silkscreen">F.Silkscreen</a></li>
-  <li><a href="/HEAD/WORK/F.Mask">F.Mask</a></li>
-  <li><a href="/HEAD/WORK/B.Cu">B.Cu</a></li>
-  <li><a href="/HEAD/WORK/B.Silkscreen">B.Silkscreen</a></li>
-  <li><a href="/HEAD/WORK/B.Mask">B.Mask</a></li>
-  <li><a href="/HEAD/WORK/Edge.Cuts">Edge.Cuts</a></li>
-</ul>
+<label for="target-commit">diff target (new commit):</label>
+<input type="text" id="target-commit" list="named-commit" placeholder="input or choose" value="{{target_commit_id}}" autocomplete="off" />
+
+<button id="change-commit-button">Change commits</button>
+
 
 <fieldset>
   <legend>Select image:</legend>
+
+  <select id="layer-select">
+    {% for l in ['F.Cu', 'F.Silkscreen', 'F.Mask', 'B.Cu', 'B.Silkscreen', 'B.Mask', 'Edge.Cuts'] %}
+    <option value="{{l}}" {% if l == layer %}selected{% endif %}>{{l}}</option>
+    {% endfor %}
+  </select>
 
   <input type="radio" name="imagesel" id="show-bottom" value="show-bottom" />
   <label for="show-bottom">Bottom</label>
@@ -139,6 +138,12 @@ window.addEventListener("wheel", (e) => {
   }
 }, { passive: false });
 
+const layer_select = document.getElementById("layer-select");
+
+document.getElementById("layer-select").addEventListener("change", (event) => {
+  window.location.href = `./${layer_select.value}`;
+});
+
 document.getElementById("vm-diff").addEventListener("change", (event) => {
   if (event.srcElement.checked) {
     top_g.style.mixBlendMode = "screen";
@@ -156,6 +161,17 @@ document.getElementById("vm-blend").addEventListener("change", (event) => {
     top_g.style.mixBlendMode = "normal";
     top_g.style.opacity = 0.8;
   }
+});
+
+const base_commit = document.getElementById("base-commit");
+const target_commit = document.getElementById("target-commit");
+
+document.getElementById("change-commit-button").addEventListener("click", (event) => {
+  const base_commit_id = encodeURIComponent(base_commit.value);
+  const target_commit_id = encodeURIComponent(target_commit.value);
+  const selected_layer = layer_select.value;
+  console.log("selected layer = ", selected_layer);
+  window.location.href = `/${base_commit_id}/${target_commit_id}/${selected_layer}`;
 });
 
 </script>
