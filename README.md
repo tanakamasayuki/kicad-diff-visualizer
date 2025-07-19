@@ -29,6 +29,9 @@ The server is showing the difference of the PCB layouts.
 
 ## How to use
 
-    $ ./run_server.sh /path/to/kicad_pcb
+    $ ./run_server.sh /path/to/kicad_project_dir
 
 Then, open http://localhost:8000/ with a Web browser.
+
+`kicad_project_dir` is the directory containing .kicad_pro file.
+Or you can specify a path to .kicad_pcb and/or .kicad_sch instead of the directory.

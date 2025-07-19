@@ -347,6 +347,49 @@ def handler_factory(*f_args, **f_kwargs):
         return HTTPRequestHandler(*f_args, *args, **f_kwargs, **kwargs)
     return create
 
+def find_kicad_pro_from_dir(dir_path):
+    return next(dir_path.glob('*.kicad_pro'), None)
+
+def determine_pcb_sch_from_pro(pro_path):
+    pro_stem = pro_path.stem  # .kicad_pro を除いたファイル名
+    def get_path(ext):
+        p = pro_path.parent / (pro_stem + ext)
+        return p if p.exists() else None
+
+    return get_path('.kicad_pcb'), get_path('.kicad_sch')
+
+def determine_pcb_sch(input_files):
+    if len(input_files) == 0:
+        return None, None
+    elif len(input_files) == 1 and input_files[0].is_dir():
+        pro_path = find_kicad_pro_from_dir(input_files[0])
+        return determine_pcb_sch_from_pro(pro_path)
+
+    input_dir = input_files[0].parent
+    for file in input_files[1:]:
+        if input_dir != file.parent:
+            raise ValueError('All input files must be in the same directory')
+
+    pro_path = None
+    pcb_path = None
+    sch_path = None
+    for file in input_files:
+        if file.suffix == '.kicad_pro':
+            pro_path = file
+        elif file.suffix == '.kicad_pcb':
+            pcb_path = file
+        elif file.suffix == '.kicad_sch':
+            sch_path = file
+
+    if pro_path:
+        p, s = determine_pcb_sch_from_pro(pro_path)
+        if pcb_path is None:
+            pcb_path = p
+        if sch_path is None:
+            sch_path = s
+
+    return pcb_path, sch_path
+
 LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
 
 def main():
@@ -354,28 +397,16 @@ def main():
     p.add_argument('--port', default=8000, type=int, help='server port number')
     p.add_argument('--host', default='0.0.0.0', help='server host address')
     p.add_argument('--log-level', default='info', choices=LOG_LEVELS, help='change logging level')
-    p.add_argument('files', nargs='+', help='A path to .kicad_pcb/.kicad_sch file to be reviewed')
+    p.add_argument('files', nargs='+', help='A path to .kicad_pro/pcb/sch files or its directory')
     args = p.parse_args()
 
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
 
-    input_files = [Path(f) for f in args.files]
-    input_dir = input_files[0].parent
-    for file in input_files[1:]:
-        if input_dir != file.parent:
-            logger.error('All input files must be in the same directory')
-            sys.exit(1)
+    pcb_path, sch_path = determine_pcb_sch([Path(f) for f in args.files])
+    logger.info('pcb="%s" sch="%s"', pcb_path, sch_path)
 
-    git_repo = git.Repo(input_dir, search_parent_directories=True)
-
-    pcb_path = None
-    sch_path = None
-    for file in input_files:
-        if file.suffix == '.kicad_pcb':
-            pcb_path = file
-        elif file.suffix == '.kicad_sch':
-            sch_path = file
+    git_repo = git.Repo(args.files[0], search_parent_directories=True)
 
     # Git ワーキングツリーのルート
     git_root = Path(git_repo.working_tree_dir)

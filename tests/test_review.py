@@ -125,5 +125,47 @@ class TestSchOperations(unittest.TestCase):
              kidivis.review.KicadSheet('Display', 'display.kicad_sch'),
              kidivis.review.KicadSheet('Empty Sheet', 'EMPTY.kicad_sch')])
 
+class TestCommandLineInterface(unittest.TestCase):
+    def test_find_kicad_pro_from_dir(self):
+        self.assertEqual(kidivis.review.find_kicad_pro_from_dir(kicad_files_dir / 'sample1'),
+                         kicad_files_dir / 'sample1/sample.kicad_pro')
+
+    def test_determine_pcb_sch_from_pro(self):
+        d = kicad_files_dir / 'sample1'
+
+        pcb_path, sch_path = kidivis.review.determine_pcb_sch_from_pro(d / 'sample.kicad_pro')
+        self.assertEqual(pcb_path, d / 'sample.kicad_pcb')
+        self.assertEqual(sch_path, d / 'sample.kicad_sch')
+
+    def test_determine_pcb_sch(self):
+        d = kicad_files_dir / 'sample1'
+
+        # .kicad_sch を指定
+        pcb_path, sch_path = kidivis.review.determine_pcb_sch([d / 'sample.kicad_sch'])
+        self.assertIsNone(pcb_path)
+        self.assertEqual(sch_path, d / 'sample.kicad_sch')
+
+        # .kicad_pro を指定すると pcb と sch が自動的に決まる
+        pcb_path, sch_path = kidivis.review.determine_pcb_sch([d / 'sample.kicad_pro'])
+        self.assertEqual(pcb_path, d / 'sample.kicad_pcb')
+        self.assertEqual(sch_path, d / 'sample.kicad_sch')
+
+        # .kicad_pro を含むディレクトリを指定することもできる
+        pcb_path, sch_path = kidivis.review.determine_pcb_sch([d])
+        self.assertEqual(pcb_path, d / 'sample.kicad_pcb')
+        self.assertEqual(sch_path, d / 'sample.kicad_sch')
+
+        with self.assertRaises(ValueError):
+            # 異なるディレクトリを指定すると例外発生
+            kidivis.review.determine_pcb_sch([
+                kicad_files_dir / 'sample1/sample.kicad_pro',
+                kicad_files_dir / 'sample2/sample.kicad_sch'])
+
+        # .kicad_pro と .kicad_pcb/sch を同時に指定すると .kicad_pcb/sch が優先される
+        pcb_path, sch_path = kidivis.review.determine_pcb_sch([
+            d / 'sample.kicad_pro', d / 'foo.kicad_sch'])
+        self.assertEqual(pcb_path, d / 'sample.kicad_pcb')
+        self.assertEqual(sch_path, d / 'foo.kicad_sch')
+
 if __name__ == '__main__':
     unittest.main()
