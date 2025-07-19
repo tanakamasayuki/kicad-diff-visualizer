@@ -26,7 +26,7 @@
     <legend>Select image:</legend>
 
     <select id="layer-select">
-      {% for l in ['F.Cu', 'F.Silkscreen', 'F.Mask', 'B.Cu', 'B.Silkscreen', 'B.Mask', 'Edge.Cuts'] %}
+      {% for l in obj_list %}
       <option value="{{l}}" {% if l == layer %}selected{% endif %}>{{l}}</option>
       {% endfor %}
     </select>

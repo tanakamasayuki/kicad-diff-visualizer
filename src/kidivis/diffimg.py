@@ -85,6 +85,10 @@ def replace_gstyle_all(svg_content, replace_map):
             postfix = '"' + attr
 
         for key, value in replace_map.items():
+            if key not in style_dict:
+                continue
+            if key == 'fill' and style_dict['fill'] == 'none':
+                continue
             style_dict[key] = value
 
         new_content += f'<{tag}{prefix}{encode_style(style_dict)}{postfix}>'

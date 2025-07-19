@@ -88,5 +88,42 @@ class TestSVGOperations(unittest.TestCase):
         name_fcu = kidivis.review.make_svg_filename(Path('foo.kicad_pcb'), 'F.Cu')
         self.assertEqual(name_fcu, 'foo-F_Cu.svg')
 
+class TestSchOperations(unittest.TestCase):
+    def setUp(self):
+        self.tmpdir = Path(tempfile.mkdtemp(prefix='kidivis'))
+        print(f'temporary directory: {self.tmpdir}')
+
+    def tearDown(self):
+        shutil.rmtree(self.tmpdir)
+
+    def test_property_regex(self):
+        m = kidivis.review.SCH_PROPERTY_PAT.match(
+            '(property "Sheetfile" "analog.kicad_sch"')
+        self.assertIsNotNone(m)
+        self.assertEqual(m.group('name'), 'Sheetfile')
+        self.assertEqual(m.group('value'), 'analog.kicad_sch')
+
+    def test_get_sch_subsheets(self):
+        self.assertEqual(
+            kidivis.review.get_sch_subsheets(kicad_files_dir / 'sample1/sample.kicad_sch'),
+            [])
+
+        self.assertEqual(
+            kidivis.review.get_sch_subsheets(kicad_files_dir / 'have_subsheets/have_subsheets.kicad_sch'),
+            [kidivis.review.KicadSheet('Digital Block', 'digitalblk.kicad_sch')])
+
+        self.assertEqual(
+            kidivis.review.get_sch_subsheets(kicad_files_dir / 'have_subsheets/digitalblk.kicad_sch'),
+            [kidivis.review.KicadSheet('Display', 'display.kicad_sch'),
+             kidivis.review.KicadSheet('Empty Sheet', 'EMPTY.kicad_sch')])
+
+    def test_get_sch_subsheets_recursive(self):
+        self.assertEqual(
+            kidivis.review.get_sch_subsheets_recursive(
+                kicad_files_dir / 'have_subsheets/have_subsheets.kicad_sch'),
+            [kidivis.review.KicadSheet('Digital Block', 'digitalblk.kicad_sch'),
+             kidivis.review.KicadSheet('Display', 'display.kicad_sch'),
+             kidivis.review.KicadSheet('Empty Sheet', 'EMPTY.kicad_sch')])
+
 if __name__ == '__main__':
     unittest.main()

@@ -1,10 +1,13 @@
 #!/usr/bin/python3
 
 import argparse
+from collections import namedtuple
 import http.server
 from itertools import product
 import logging
+import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -19,6 +22,9 @@ from . import diffimg
 
 LAYERS = ['.'.join(p) for p in product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])] + ['Edge.Cuts']
 KICAD_CLI = '/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe'
+SCH_PROPERTY_PAT = re.compile(r'\(property\s+"(?P<name>[^"]+)"\s+"(?P<value>[^"]+)"')
+
+KicadSheet = namedtuple('KicadSheet', ['name', 'file'])
 
 logger = logging.getLogger(__name__)
 
@@ -34,22 +40,48 @@ def using_kicadwin_from_wsl():
     '''
     return Path('/usr/bin/wslpath').exists() and KICAD_CLI.endswith('.exe')
 
-def export_svgs(dst_dir_path, pcb_file_path):
+def export_svgs(dst_dir_path, mode, file_path):
+    dst_dir_path_for_cmd = dst_dir_path
+    file_path_for_cmd = file_path
     if using_kicadwin_from_wsl():
         # パスの変換が必要
         if dst_dir_path.drive == '':
-            dst_dir_path = convert_path_to_windows(dst_dir_path)
-        if pcb_file_path.drive == '':
-            pcb_file_path = convert_path_to_windows(pcb_file_path)
+            dst_dir_path_for_cmd = convert_path_to_windows(dst_dir_path)
+        if file_path.drive == '':
+            file_path_for_cmd = convert_path_to_windows(file_path)
 
-    export_cmd = [KICAD_CLI, 'pcb', 'export', 'svg', '--mode-multi',
-                  '--fit-page-to-board', '--black-and-white',
-                  '--layers', ','.join(LAYERS),
-                  '--output', str(dst_dir_path), str(pcb_file_path)]
-    res = subprocess.run(export_cmd)
+    export_cmd = [KICAD_CLI, mode, 'export', 'svg',
+                  '--black-and-white', '--output', str(dst_dir_path_for_cmd)]
+    if mode == 'pcb':
+        export_cmd.extend(['--fit-page-to-board', '--mode-multi',
+                           '--layers', ','.join(LAYERS)])
+    elif mode == 'sch':
+        export_cmd.extend(['--no-background-color'])
+
+    res = subprocess.run(export_cmd + [str(file_path_for_cmd)])
     if res.returncode != 0:
         logger.error('failed to export SVGs: args=%s', res.args)
         res.check_returncode()
+
+    if mode == 'sch':
+        '''
+        sch export svgは <proj-name>.svg, <proj-name>-<sheet>.svg
+        というファイルを生成するので、希望のファイル名に変えておく。
+        '''
+        sch_stem = file_path.stem
+        svgs = list(dst_dir_path.glob(sch_stem + '*.svg'))
+        logger.debug('globbed svg files in %s: %s', dst_dir_path, svgs)
+        for svg in svgs:
+            new_name = svg.name[len(sch_stem):]
+            if new_name == '.svg': # top sheet
+                new_name = svg.name
+            elif new_name.startswith('-'):
+                new_name = new_name[1:]
+            else:
+                logger.warning('unknown filename pattern: %s', svg.name)
+                continue
+            os.rename(svg, svg.parent / new_name)
+            logger.debug('file renamed: %s => %s', svg, svg.parent / new_name)
 
 def extract_file(git_repo, commit_id, file_path, dst_path):
     logger.debug('extracting file: commit=%s file=%s dst=%s', commit_id, file_path, dst_path)
@@ -75,50 +107,78 @@ def extract_file(git_repo, commit_id, file_path, dst_path):
     with open(dst_path, 'wb') as f:
         f.write(res.stdout)
 
-def make_svg_filename(pcb_file_name, layer_name):
+def make_pcbsvg_filename(pcb_file_name, layer_name):
     l = layer_name.replace('.', '_')
     return f'{Path(pcb_file_name).stem}-{l}.svg'
+
+#def make_schsvg_filename(sch_file_name):
+#    return Path(sch_file_name).stem + '.svg'
 
 def action_image(req, diff_base, diff_target, filename):
     if not filename.endswith('.svg'):
         req.send_error(http.HTTPStatus.NOT_FOUND)
         return
 
-    layer = filename[:-4]
+    obj = filename[:-4]
+    mode = 'pcb' if obj in LAYERS else 'sch'
 
     base_dir = req.tmp_dir_path / diff_base
     target_dir = req.tmp_dir_path / diff_target
-    pcb_filename = req.pcb_path.name
+    file_path = req.pcb_path if mode == 'pcb' else req.sch_path
 
-    base_pcb_path = base_dir / pcb_filename
-    target_pcb_path = target_dir / pcb_filename
+    logger.debug('action_image: obj=%s mode=%s diff_base=%s diff_target=%s file_path=%s',
+                 obj, mode, diff_base, diff_target, file_path)
+
+    base_file_path = base_dir / file_path.name
+    target_file_path = target_dir / file_path.name
     extract_file(req.git_repo,
                  diff_base,
-                 req.pcb_path,
-                 base_pcb_path)
+                 file_path,
+                 base_file_path)
     extract_file(req.git_repo,
                  None if diff_target == 'WORK' else diff_target,
-                 req.pcb_path,
-                 target_pcb_path)
+                 file_path,
+                 target_file_path)
 
-    base_svg_path = base_dir / make_svg_filename(req.pcb_path.name, layer)
-    target_svg_path = target_dir / make_svg_filename(req.pcb_path.name, layer)
+    if mode == 'sch':
+        # 階層シートの回路図を持ってこないと階層シートの SVG が空になってしまう
+        sheets = get_sch_subsheets_recursive(req.sch_path)
+        for sheet in sheets:
+            extract_file(req.git_repo,
+                         diff_base,
+                         req.sch_path.parent / sheet.file,
+                         base_dir / sheet.file)
+            extract_file(req.git_repo,
+                         None if diff_target == 'WORK' else diff_target,
+                         req.sch_path.parent / sheet.file,
+                         target_dir / sheet.file)
+
+    if mode == 'pcb':
+        base_svg_path = base_dir / mode / make_pcbsvg_filename(file_path.name, obj)
+        target_svg_path = target_dir / mode / make_pcbsvg_filename(file_path.name, obj)
+    elif mode == 'sch':
+        base_svg_path = base_dir / mode / (obj + '.svg')
+        target_svg_path = target_dir / mode / (obj + '.svg')
 
     if not base_svg_path.exists():
-        export_svgs(base_dir, base_pcb_path)
+        export_svgs(base_dir / mode, mode, base_file_path)
     if not target_svg_path.exists():
-        export_svgs(target_dir, target_pcb_path)
+        export_svgs(target_dir / mode, mode, target_file_path)
 
     with open(base_svg_path) as f:
         base_svg = f.read()
     with open(target_svg_path) as f:
         target_svg = f.read()
 
-    overlayed_svg = diffimg.overlay_two_svgs(base_svg, target_svg, True)
-    if overlayed_svg.startswith('<svg'):
-        overlayed_svg = overlayed_svg[:4] + ' id="overlayed_svg"' + overlayed_svg[4:]
-    else:
-        logger.warning('overlayed_svg does not start with "<svg": %s', overlayed_svg[:10])
+    overlayed_svg = diffimg.overlay_two_svgs(base_svg, target_svg, False)
+    svg_pos = overlayed_svg.find('<svg')
+    if svg_pos < 0:
+        logger.error('overlayed_svg does not contain <svg> tag: %s', overlayed_svg[:100])
+        req.send_error(http.HTTPStatus.INTERNAL_SERVER_ERROR)
+        return
+
+    svg_pos += 4
+    overlayed_svg = overlayed_svg[:svg_pos] + ' id="overlayed_svg"' + overlayed_svg[svg_pos:]
 
     encoded_svg = overlayed_svg.encode('utf-8')
 
@@ -128,13 +188,90 @@ def action_image(req, diff_base, diff_target, filename):
     req.end_headers()
     req.wfile.write(encoded_svg)
 
-def action_diff(req, diff_base, diff_target, layer):
-    if layer not in LAYERS:
+def get_sch_subsheets(sch_path):
+    with open(sch_path) as f:
+        sch_src = f.read()
+
+    if not sch_src.startswith('(kicad_sch'):
+        raise SyntaxError('kicad_sch has invalid syntax')
+
+    sheets = []
+    pos = 0
+    while pos < len(sch_src):
+        pos = sch_src.find('(sheet', pos)
+        if pos < 0:
+            break
+        pos += 6
+        if not sch_src[pos].isspace():
+            # '(sheet_instances' などがヒットしたため、検索しなおす
+            continue
+
+        # '(sheet' に対応する閉じ括弧を探す
+        paren = 1
+        sheet_end_pos = -1
+        for i in range(pos, len(sch_src)):
+            if sch_src[i] == '(':
+                paren += 1
+            elif sch_src[i] == ')':
+                paren -= 1
+
+            if paren == 0: # end of sheet
+                sheet_end_pos = i
+                break
+        if sheet_end_pos < 0:
+            raise SyntaxError('sheet is not closed')
+
+        sheetname = None
+        sheetfile = None
+        while pos < sheet_end_pos:
+            m = SCH_PROPERTY_PAT.search(sch_src, pos, sheet_end_pos)
+            if m is None:
+                break
+            pos = m.end()
+
+            name = m.group('name')
+            value = m.group('value')
+            if name == 'Sheetname':
+                sheetname = value
+            elif name == 'Sheetfile':
+                sheetfile = value
+
+        pos = sheet_end_pos + 1
+
+        if sheetname is None or sheetfile is None:
+            raise SyntaxError('no "Sheetname" or "Sheetfile" in sheet object')
+
+        sheets.append(KicadSheet(sheetname, sheetfile))
+
+    return sheets
+
+def get_sch_subsheets_recursive(sch_path):
+    sheets = get_sch_subsheets(sch_path)
+
+    sch_dir = sch_path.parent
+    for sheet in sheets:
+        sheets.extend(get_sch_subsheets_recursive(sch_dir / sheet.file))
+
+    return sheets
+
+def action_diff(req, diff_base, diff_target, obj):
+    obj_list = LAYERS
+
+    if req.sch_path:
+        sheets = get_sch_subsheets_recursive(req.sch_path)
+        files = [sh.file for sh in sheets] + [req.sch_path]
+        names = [Path(f).stem for f in files]
+        obj_list = LAYERS + names
+
+    if obj not in obj_list:
         req.send_error(http.HTTPStatus.NOT_FOUND)
         return
 
     t = req.jinja_env.get_template('diffpcb.html')
-    s = t.render(base_commit_id=diff_base, target_commit_id=diff_target, layer=layer).encode('utf-8')
+    s = t.render(base_commit_id=diff_base,
+                 target_commit_id=diff_target,
+                 obj_list=obj_list,
+                 layer=obj).encode('utf-8')
     req.send_response(200)
     req.send_header('Content-Type', 'text/html')
     req.send_header('Content-Length', len(s))
@@ -150,11 +287,12 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     ソケットのタイムアウト設定で凌ぐことにする。
     '''
 
-    def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, *args, **kwargs):
+    def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, *args, **kwargs):
         self.tmp_dir_path = tmp_dir_path
         self.git_repo = git_repo
         self.jinja_env = jinja_env
         self.pcb_path = pcb_path
+        self.sch_path = sch_path
         self.traceid = uuid.uuid4()
 
         logger.debug('HTTPRequestHandler.__init__(%s): args=%s kwargs=%s', self.traceid, args, kwargs)
@@ -165,32 +303,37 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
         logger.info('do_GET path=%s traceid=%s', self.path, self.traceid)
         try:
-            parts = urllib.parse.urlparse(self.path)
+            url_parts = urllib.parse.urlparse(self.path)
 
-            if parts.path == '/':
+            if url_parts.path == '/':
                 self.send_response(http.HTTPStatus.MOVED_PERMANENTLY)
-                self.send_header('Location', '/diff/HEAD/WORK/F.Cu')
+                self.send_header('Location', '/diff/HEAD/WORK/pcb/F.Cu')
                 self.end_headers()
                 return
 
-            path = Path(parts.path)
-            num_parts = len(path.parts)
-
-            if path.parts[0] != '/' or num_parts <= 1:
+            if not url_parts.path.startswith('/'):
                 self.send_error(http.HTTPStatus.NOT_FOUND)
                 return
 
-            action = path.parts[1]
-            if (action == 'image' or action == 'diff') and num_parts != 5:
+            path_parts = [urllib.parse.unquote(p) for p in url_parts.path[1:].split('/')]
+            if len(path_parts) <= 1:
                 self.send_error(http.HTTPStatus.NOT_FOUND)
                 return
 
-            args = [urllib.parse.unquote(p) for p in path.parts[2:]]
+            #      0          1             2            3
+            # /<action>/<base-commit>/<target-commit>/<object>
+            # action: 'image', 'diff'
+            # object: layer (F.Cu, Edge.Cuts, etc), 'sch', 'sch-<subsheet>'
+            action = path_parts[0]
+            if action not in ['image', 'diff'] or len(path_parts) != 4:
+                self.send_error(http.HTTPStatus.NOT_FOUND)
+                return
+
             if action == 'image':
-                action_image(self, *args)
+                action_image(self, *path_parts[1:])
                 return
             elif action == 'diff':
-                action_diff(self, *args)
+                action_diff(self, *path_parts[1:])
                 return
 
             self.send_error(http.HTTPStatus.NOT_FOUND)
@@ -211,13 +354,28 @@ def main():
     p.add_argument('--port', default=8000, type=int, help='server port number')
     p.add_argument('--host', default='0.0.0.0', help='server host address')
     p.add_argument('--log-level', default='info', choices=LOG_LEVELS, help='change logging level')
-    p.add_argument('pcb_file', help='A path to .kicad_pcb file to be reviewed')
+    p.add_argument('files', nargs='+', help='A path to .kicad_pcb/.kicad_sch file to be reviewed')
     args = p.parse_args()
 
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
 
-    git_repo = git.Repo(args.pcb_file, search_parent_directories=True)
+    input_files = [Path(f) for f in args.files]
+    input_dir = input_files[0].parent
+    for file in input_files[1:]:
+        if input_dir != file.parent:
+            logger.error('All input files must be in the same directory')
+            sys.exit(1)
+
+    git_repo = git.Repo(input_dir, search_parent_directories=True)
+
+    pcb_path = None
+    sch_path = None
+    for file in input_files:
+        if file.suffix == '.kicad_pcb':
+            pcb_path = file
+        elif file.suffix == '.kicad_sch':
+            sch_path = file
 
     # Git ワーキングツリーのルート
     git_root = Path(git_repo.working_tree_dir)
@@ -231,8 +389,7 @@ def main():
             loader=jinja2.FileSystemLoader(str(Path(__file__).parent / 'templates')),
             autoescape=jinja2.select_autoescape()
         )
-        pcb_path = Path(args.pcb_file)
-        create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path)
+        create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path)
         with http.server.HTTPServer((args.host, args.port), create_handler) as server:
             print(f'Serving HTTP on {args.host} port {args.port}'
                   + f' (http://{args.host}:{args.port}/) ...')
