@@ -231,9 +231,9 @@ def get_sch_subsheets(sch_path):
 
             name = m.group('name')
             value = m.group('value')
-            if name == 'Sheetname':
+            if name == "Sheetname" or name == "Sheet name":
                 sheetname = value
-            elif name == 'Sheetfile':
+            elif name == "Sheetfile" or name == "Sheet file":
                 sheetfile = value
 
         pos = sheet_end_pos + 1
