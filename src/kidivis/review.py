@@ -307,7 +307,7 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
 
             if url_parts.path == '/':
                 self.send_response(http.HTTPStatus.MOVED_PERMANENTLY)
-                self.send_header('Location', '/diff/HEAD/WORK/pcb/F.Cu')
+                self.send_header('Location', '/diff/HEAD/WORK/F.Cu')
                 self.end_headers()
                 return
 
