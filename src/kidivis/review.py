@@ -2,6 +2,7 @@
 
 import argparse
 from collections import namedtuple
+import configparser
 import http.server
 from itertools import product
 import logging
@@ -20,8 +21,7 @@ import jinja2
 
 from . import diffimg
 
-LAYERS = ['.'.join(p) for p in product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])] + ['Edge.Cuts']
-KICAD_CLI = '/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe'
+LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
 SCH_PROPERTY_PAT = re.compile(r'\(property\s+"(?P<name>[^"]+)"\s+"(?P<value>[^"]+)"')
 
 KicadSheet = namedtuple('KicadSheet', ['name', 'file'])
@@ -34,27 +34,27 @@ def convert_path_to_windows(file_path):
     res.check_returncode()
     return Path(res.stdout.decode('utf-8').strip())
 
-def using_kicadwin_from_wsl():
+def using_kicadwin_from_wsl(kicad_cli):
     '''
     KiCad for Windows を WSL から使う場合に真
     '''
-    return Path('/usr/bin/wslpath').exists() and KICAD_CLI.endswith('.exe')
+    return Path('/usr/bin/wslpath').exists() and kicad_cli.endswith('.exe')
 
-def export_svgs(dst_dir_path, mode, file_path):
+def export_svgs(dst_dir_path, mode, file_path, kicad_cli, layers):
     dst_dir_path_for_cmd = dst_dir_path
     file_path_for_cmd = file_path
-    if using_kicadwin_from_wsl():
+    if using_kicadwin_from_wsl(kicad_cli):
         # パスの変換が必要
         if dst_dir_path.drive == '':
             dst_dir_path_for_cmd = convert_path_to_windows(dst_dir_path)
         if file_path.drive == '':
             file_path_for_cmd = convert_path_to_windows(file_path)
 
-    export_cmd = [KICAD_CLI, mode, 'export', 'svg',
+    export_cmd = [kicad_cli, mode, 'export', 'svg',
                   '--black-and-white', '--output', str(dst_dir_path_for_cmd)]
     if mode == 'pcb':
         export_cmd.extend(['--fit-page-to-board', '--mode-multi',
-                           '--layers', ','.join(LAYERS)])
+                           '--layers', ','.join(layers)])
     elif mode == 'sch':
         export_cmd.extend(['--no-background-color'])
 
@@ -120,7 +120,7 @@ def action_image(req, diff_base, diff_target, filename):
         return
 
     obj = filename[:-4]
-    mode = 'pcb' if obj in LAYERS else 'sch'
+    mode = 'pcb' if obj in req.layers else 'sch'
 
     base_dir = req.tmp_dir_path / diff_base
     target_dir = req.tmp_dir_path / diff_target
@@ -161,9 +161,9 @@ def action_image(req, diff_base, diff_target, filename):
         target_svg_path = target_dir / mode / (obj + '.svg')
 
     if not base_svg_path.exists():
-        export_svgs(base_dir / mode, mode, base_file_path)
+        export_svgs(base_dir / mode, mode, base_file_path, req.kicad_cli, req.layers)
     if not target_svg_path.exists():
-        export_svgs(target_dir / mode, mode, target_file_path)
+        export_svgs(target_dir / mode, mode, target_file_path, req.kicad_cli, req.layers)
 
     with open(base_svg_path) as f:
         base_svg = f.read()
@@ -255,13 +255,13 @@ def get_sch_subsheets_recursive(sch_path):
     return sheets
 
 def action_diff(req, diff_base, diff_target, obj):
-    obj_list = LAYERS
+    obj_list = req.layers
 
     if req.sch_path:
         sheets = get_sch_subsheets_recursive(req.sch_path)
         files = [sh.file for sh in sheets] + [req.sch_path]
         names = [Path(f).stem for f in files]
-        obj_list = LAYERS + names
+        obj_list = req.layers + names
 
     if obj not in obj_list:
         req.send_error(http.HTTPStatus.NOT_FOUND)
@@ -287,12 +287,14 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     ソケットのタイムアウト設定で凌ぐことにする。
     '''
 
-    def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, *args, **kwargs):
+    def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers, *args, **kwargs):
         self.tmp_dir_path = tmp_dir_path
         self.git_repo = git_repo
         self.jinja_env = jinja_env
         self.pcb_path = pcb_path
         self.sch_path = sch_path
+        self.kicad_cli = kicad_cli
+        self.layers = layers
         self.traceid = uuid.uuid4()
 
         logger.debug('HTTPRequestHandler.__init__(%s): args=%s kwargs=%s', self.traceid, args, kwargs)
@@ -390,27 +392,66 @@ def determine_pcb_sch(input_files):
 
     return pcb_path, sch_path
 
-LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
+def read_config(args):
+    p = configparser.ConfigParser()
+    if args.conf is None:
+        p.read(Path(__file__).parents[2] / 'kidivis_sample.ini')
+    else:
+        p.read(args.conf)
+
+    kicad_cli = p.get('common', 'kicad_cli', fallback='/mnt/c/Program Files/KiCad/9.0/bin/kicad-cli.exe')
+    layers = p.get('common', 'layers')
+    if layers is None:
+        layers = ['.'.join(p) for p in product(['F', 'B'], ['Cu', 'Silkscreen', 'Mask'])] + ['Edge.Cuts']
+    else:
+        layers = layers.split()  # 空白区切り
+
+    return {
+        'common': {
+            'kicad_cli': kicad_cli,
+            'layers': layers,
+        },
+        'server': {
+            'port': args.port or p.getint('server', 'port', fallback=8000),
+            'host': args.host or p.get('server', 'host', fallback='0.0.0.0'),
+            'log_level': args.log_level or p.get('server', 'log_level', fallback='info'),
+        }
+    }
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument('--port', default=8000, type=int, help='server port number')
-    p.add_argument('--host', default='0.0.0.0', help='server host address')
-    p.add_argument('--log-level', default='info', choices=LOG_LEVELS, help='change logging level')
+    p.add_argument('--port', type=int, help='server port number')
+    p.add_argument('--host', help='server host address')
+    p.add_argument('--log-level', choices=LOG_LEVELS, help='change logging level')
+    p.add_argument('--conf', help='configuration file')
     p.add_argument('files', nargs='+', help='A path to .kicad_pro/pcb/sch files or its directory')
     args = p.parse_args()
 
-    log_level = getattr(logging, args.log_level.upper())
+    kidivis_root = Path(__file__).parents[2]
+    if args.conf is None:
+        # kidivis.ini が存在すれば args.conf に設定
+        default_conf_path = kidivis_root / 'kidivis.ini'
+        if default_conf_path.exists():
+            args.conf = default_conf_path
+
+    conf = read_config(args)
+
+    log_level = getattr(logging, conf['server']['log_level'].upper())
     logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
 
     pcb_path, sch_path = determine_pcb_sch([Path(f).absolute() for f in args.files])
-    logger.info('pcb="%s" sch="%s"', pcb_path, sch_path)
+    logger.info('conf="%s" pcb="%s" sch="%s"', args.conf, pcb_path, sch_path)
 
     git_repo = git.Repo(args.files[0], search_parent_directories=True)
 
     # Git ワーキングツリーのルート
     git_root = Path(git_repo.working_tree_dir)
     logger.info('git work tree: %s', git_root)
+
+    host = conf['server']['host']
+    port = conf['server']['port']
+    kicad_cli = conf['common']['kicad_cli']
+    layers = conf['common']['layers']
 
     with tempfile.TemporaryDirectory(prefix='kidivis') as td:
         tmp_dir_path = Path(td)
@@ -420,10 +461,10 @@ def main():
             loader=jinja2.FileSystemLoader(str(Path(__file__).parent / 'templates')),
             autoescape=jinja2.select_autoescape()
         )
-        create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path)
-        with http.server.HTTPServer((args.host, args.port), create_handler) as server:
-            print(f'Serving HTTP on {args.host} port {args.port}'
-                  + f' (http://{args.host}:{args.port}/) ...')
+        create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers)
+        with http.server.HTTPServer((host, port), create_handler) as server:
+            print(f'Serving HTTP on {host} port {port}'
+                  + f' (http://{host}:{port}/) ...')
             server.serve_forever()
 
     sys.exit(0)

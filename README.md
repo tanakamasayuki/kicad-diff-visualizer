@@ -44,3 +44,8 @@ Then, open http://localhost:8000/ with a Web browser.
 
 `kicad_project_dir` refers to the directory containing a .kicad_pro file.
 Alternatively, you may directly specify paths to .kicad_pcb and/or .kicad_sch.
+
+## Configuration
+
+Copy `kidivis_sample.ini` to `kidivis.ini`, then modify it as needed.
+To use a different configuration file, pass the `--conf` option to `run_server.sh`.

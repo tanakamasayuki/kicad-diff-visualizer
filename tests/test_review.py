@@ -24,6 +24,16 @@ def diff_files(a, b):
         return True
     return False
 
+def read_config_for_test():
+    class Args(object):
+        pass
+    args = Args()
+    args.conf = 'kidivis_sample.ini'
+    args.port = None
+    args.host = None
+    args.log_level = None
+    return kidivis.review.read_config(args)
+
 class TestGitOperations(unittest.TestCase):
     def setUp(self):
         self.tmpdir = Path(tempfile.mkdtemp(prefix='kidivis'))
@@ -78,9 +88,13 @@ class TestSVGOperations(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
-    @unittest.skip('skip test_export_svgs because it takes too long time.')
     def test_export_svgs(self):
-        kidivis.review.export_svgs(self.tmpdir, kicad_files_dir / 'sample3/sample.kicad_pcb')
+        conf = read_config_for_test()
+        kidivis.review.export_svgs(self.tmpdir,
+                                   'pcb',
+                                   kicad_files_dir / 'sample3/sample.kicad_pcb',
+                                   conf['common']['kicad_cli'],
+                                   conf['common']['layers'])
         for layer in ['F_Cu', 'F_Mask', 'B_Cu', 'B_Mask', 'Edge_Cuts']:
             self.assertTrue((self.tmpdir / f'sample-{layer}.svg').exists())
 
@@ -166,6 +180,35 @@ class TestCommandLineInterface(unittest.TestCase):
             d / 'sample.kicad_pro', d / 'foo.kicad_sch'])
         self.assertEqual(pcb_path, d / 'sample.kicad_pcb')
         self.assertEqual(sch_path, d / 'foo.kicad_sch')
+
+    def test_read_config_no_ini(self):
+        class Args(object):
+            pass
+        args = Args()
+        args.conf = None
+        args.port = None
+        args.host = '1.2.3.4'
+        args.log_level = None
+
+        conf = kidivis.review.read_config(args)
+        self.assertEqual(conf['server']['port'], 8000)
+        self.assertEqual(conf['server']['host'], '1.2.3.4')
+
+    def test_read_config(self):
+        class Args(object):
+            pass
+        args = Args()
+        args.conf = tests_dir / 'sample1.ini'
+        args.port = None
+        args.host = '1.2.3.4'
+        args.log_level = 'warning'
+
+        conf = kidivis.review.read_config(args)
+        self.assertEqual(conf['common']['kicad_cli'], '/deadbeef/kicad-cli')
+        self.assertEqual(conf['common']['layers'], ['F.Cu', 'F.Mask', 'B.Cu'])
+        self.assertEqual(conf['server']['port'], 1234)
+        self.assertEqual(conf['server']['host'], '1.2.3.4')
+        self.assertEqual(conf['server']['log_level'], 'warning')
 
 if __name__ == '__main__':
     unittest.main()
