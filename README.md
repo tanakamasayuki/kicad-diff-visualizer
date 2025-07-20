@@ -1,14 +1,14 @@
 # kicad-diff-visualizer
-A tool to visualize the difference of PCB layouts and schematics created by KiCad.
+A tool to visualize differences in PCB layouts and schematics created with KiCad.
 
 This tool recognizes a Git repository and visualizes the difference between two commits.
-Typically it can be used
-- when you write a commit log. You can recall what you've done on your design.
-- when you check a commit history. It's hard to understand the actual changes based solely on text diffs.
+Typical use cases include:
+- Writing commit logs: it helps you recall design changes.
+- Reviewing commit history: visual diffs are easier to understand than text diffs.
 
-One of this tool's key features is minimal external dependencies.
-The core idea is to use kicad-cli, which is part of the standard KiCad installation,
-to generate an image for each commit and calculate the differences.
+One of the key features of this tool is its minimal reliance on external dependencies.
+It leverages `kicad-cli`, which comes bundled with KiCad,
+to generate images for each commit and calculate the differences.
 
 ## Requirements
 
@@ -19,13 +19,17 @@ to generate an image for each commit and calculate the differences.
 - Jinja >= 2.10
   - Ubuntu: `sudo apt install python3-jinja2`
 
+This program has been tested on Ubuntu running under WSL2.
+Please test it on your environment and send a report or a pull request.
+
 ## Screenshot
 
 ![](doc/screenshot_server.png)
 
-The server is showing the difference of the PCB layouts.
-- White area means no diff.
-- Red/blue area is only in the old/new commit.
+The server shows the PCB layout differences.
+- White: no diff
+- Red: only in the old commit
+- Blue: only in the new commit
 
 ## How to use
 
@@ -38,5 +42,5 @@ or
 
 Then, open http://localhost:8000/ with a Web browser.
 
-`kicad_project_dir` is the directory containing .kicad_pro file.
-Or you can specify a path to .kicad_pcb and/or .kicad_sch instead of the directory.
+`kicad_project_dir` refers to the directory containing a .kicad_pro file.
+Alternatively, you may directly specify paths to .kicad_pcb and/or .kicad_sch.
