@@ -365,6 +365,8 @@ def determine_pcb_sch(input_files):
         return None, None
     elif len(input_files) == 1 and input_files[0].is_dir():
         pro_path = find_kicad_pro_from_dir(input_files[0])
+        if pro_path is None:
+            raise ValueError(f'kicad_pro file not found in the directory "{input_files[0]}"')
         return determine_pcb_sch_from_pro(pro_path)
 
     input_dir = input_files[0].parent
