@@ -403,7 +403,7 @@ def main():
     log_level = getattr(logging, args.log_level.upper())
     logging.basicConfig(level=log_level, format='%(asctime)-15s %(levelname)s:%(name)s:%(message)s')
 
-    pcb_path, sch_path = determine_pcb_sch([Path(f) for f in args.files])
+    pcb_path, sch_path = determine_pcb_sch([Path(f).absolute() for f in args.files])
     logger.info('pcb="%s" sch="%s"', pcb_path, sch_path)
 
     git_repo = git.Repo(args.files[0], search_parent_directories=True)

@@ -31,6 +31,11 @@ The server is showing the difference of the PCB layouts.
 
     $ ./run_server.sh /path/to/kicad_project_dir
 
+or
+
+    $ cd /path/to/kicad_project_dir
+    $ /path/to/kicad-diff-visualizer/run_server.sh
+
 Then, open http://localhost:8000/ with a Web browser.
 
 `kicad_project_dir` is the directory containing .kicad_pro file.

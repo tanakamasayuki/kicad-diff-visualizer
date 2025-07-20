@@ -1,8 +1,7 @@
 #!/bin/sh
-if [ $# -lt 1 ]
-then
-  echo Usage: $0 [options] PCB_FILE
-  exit 1
-fi
 
-PYTHONPATH=./src python3 -m kidivis.review "$@"
+# Specify current dir "." if no argument provided
+input_files="${@:-.}"
+
+script_dir="$(dirname "$(realpath "$0")")"
+PYTHONPATH=$script_dir/src python3 -m kidivis.review $input_files
