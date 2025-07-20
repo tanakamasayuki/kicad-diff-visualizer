@@ -453,6 +453,10 @@ def main():
     kicad_cli = conf['common']['kicad_cli']
     layers = conf['common']['layers']
 
+    access_host = 'localhost'
+    if host != '0.0.0.0':
+        access_host = host
+
     with tempfile.TemporaryDirectory(prefix='kidivis') as td:
         tmp_dir_path = Path(td)
         logger.info('temporary directory: %s', tmp_dir_path)
@@ -464,7 +468,7 @@ def main():
         create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers)
         with http.server.HTTPServer((host, port), create_handler) as server:
             print(f'Serving HTTP on {host} port {port}'
-                  + f' (http://{host}:{port}/) ...')
+                  + f' (http://{access_host}:{port}/) ...')
             server.serve_forever()
 
     sys.exit(0)
