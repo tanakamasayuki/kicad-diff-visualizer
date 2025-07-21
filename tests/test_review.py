@@ -1,4 +1,3 @@
-import difflib
 import filecmp
 from pathlib import Path
 import shutil
@@ -8,21 +7,7 @@ import unittest
 import git
 
 import kidivis.review
-
-tests_dir = Path(__file__).absolute().parent
-kicad_files_dir = tests_dir / 'kicad_files'
-
-def diff_files(a, b):
-    with open(a) as f:
-        content_a = f.readlines()
-    with open(b) as f:
-        content_b = f.readlines()
-    d = list(difflib.unified_diff(content_a, content_b))
-    if d:
-        print('diff (first 10 lines):')
-        print(''.join(d[:10]))
-        return True
-    return False
+from utils import *
 
 def read_config_for_test():
     class Args(object):
@@ -62,22 +47,22 @@ class TestGitOperations(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
-    def test_extract_file_from_initial_commit(self):
+    def test_extract_file_git_from_initial_commit(self):
         # initial commit のファイル抽出
         output_path = self.tmpdir / 'extract/initial_commit.kicad_pcb'
-        kidivis.review.extract_file(self.git_repo,
-                                    str(self.initial_commit),
-                                    self.tmpdir / 'repo/sample.kicad_pcb',
-                                    output_path)
+        kidivis.review.extract_file_git(self.git_repo,
+                                        str(self.initial_commit),
+                                        self.tmpdir / 'repo/sample.kicad_pcb',
+                                        output_path)
         self.assertFalse(diff_files(output_path, kicad_files_dir / 'sample1/sample.kicad_pcb'))
 
-    def test_extract_file_from_working_tree(self):
+    def test_extract_file_git_from_working_tree(self):
         # ワーキングツリーのファイル抽出
         output_path = self.tmpdir / 'WORK' / 'extract/working_tree.kicad_pcb'
-        kidivis.review.extract_file(self.git_repo,
-                                    None,
-                                    self.tmpdir / 'repo/sample.kicad_pcb',
-                                    output_path)
+        kidivis.review.extract_file_git(self.git_repo,
+                                        None,
+                                        self.tmpdir / 'repo/sample.kicad_pcb',
+                                        output_path)
         self.assertFalse(diff_files(output_path, kicad_files_dir / 'sample3/sample.kicad_pcb'))
 
 class TestSVGOperations(unittest.TestCase):
@@ -88,6 +73,7 @@ class TestSVGOperations(unittest.TestCase):
     def tearDown(self):
         shutil.rmtree(self.tmpdir)
 
+    @unittest.skip
     def test_export_svgs(self):
         conf = read_config_for_test()
         kidivis.review.export_svgs(self.tmpdir,

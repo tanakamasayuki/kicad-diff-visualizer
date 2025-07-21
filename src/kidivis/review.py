@@ -1,5 +1,11 @@
 #!/usr/bin/python3
 
+'''
+Copyright (c) 2025 Kota UCHIDA
+
+The web server to interact with users.
+'''
+
 import argparse
 from collections import namedtuple
 import configparser
@@ -83,7 +89,7 @@ def export_svgs(dst_dir_path, mode, file_path, kicad_cli, layers):
             os.rename(svg, svg.parent / new_name)
             logger.debug('file renamed: %s => %s', svg, svg.parent / new_name)
 
-def extract_file(git_repo, commit_id, file_path, dst_path):
+def extract_file_git(git_repo, commit_id, file_path, dst_path):
     logger.debug('extracting file: commit=%s file=%s dst=%s', commit_id, file_path, dst_path)
     if dst_path.exists():
         return
@@ -131,27 +137,27 @@ def action_image(req, diff_base, diff_target, filename):
 
     base_file_path = base_dir / file_path.name
     target_file_path = target_dir / file_path.name
-    extract_file(req.git_repo,
-                 diff_base,
-                 file_path,
-                 base_file_path)
-    extract_file(req.git_repo,
-                 None if diff_target == 'WORK' else diff_target,
-                 file_path,
-                 target_file_path)
+    extract_file_git(req.git_repo,
+                     diff_base,
+                     file_path,
+                     base_file_path)
+    extract_file_git(req.git_repo,
+                     None if diff_target == 'WORK' else diff_target,
+                     file_path,
+                     target_file_path)
 
     if mode == 'sch':
         # 階層シートの回路図を持ってこないと階層シートの SVG が空になってしまう
         sheets = get_sch_subsheets_recursive(req.sch_path)
         for sheet in sheets:
-            extract_file(req.git_repo,
-                         diff_base,
-                         req.sch_path.parent / sheet.file,
-                         base_dir / sheet.file)
-            extract_file(req.git_repo,
-                         None if diff_target == 'WORK' else diff_target,
-                         req.sch_path.parent / sheet.file,
-                         target_dir / sheet.file)
+            extract_file_git(req.git_repo,
+                             diff_base,
+                             req.sch_path.parent / sheet.file,
+                             base_dir / sheet.file)
+            extract_file_git(req.git_repo,
+                             None if diff_target == 'WORK' else diff_target,
+                             req.sch_path.parent / sheet.file,
+                             target_dir / sheet.file)
 
     if mode == 'pcb':
         base_svg_path = base_dir / mode / make_pcbsvg_filename(file_path.name, obj)
@@ -444,11 +450,16 @@ def main():
     pcb_path, sch_path = determine_pcb_sch([Path(f).absolute() for f in args.files])
     logger.info('conf="%s" pcb="%s" sch="%s"', args.conf, pcb_path, sch_path)
 
-    git_repo = git.Repo(args.files[0], search_parent_directories=True)
+    git_repo = None
+    try:
+        git_repo = git.Repo(args.files[0], search_parent_directories=True)
+    except git.exc.InvalidGitRepositoryError:
+        logger.info('No git repository.')
 
-    # Git ワーキングツリーのルート
-    git_root = Path(git_repo.working_tree_dir)
-    logger.info('git work tree: %s', git_root)
+    if git_repo:
+        # Git ワーキングツリーのルート
+        git_root = Path(git_repo.working_tree_dir)
+        logger.info('git work tree: %s', git_root)
 
     host = conf['server']['host']
     port = conf['server']['port']
