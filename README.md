@@ -14,10 +14,10 @@ to generate images for each commit and calculate the differences.
 
 - `git` command
   - Ubuntu: `sudo apt install git`
-- GitPython >= 3.0
-  - Ubuntu: `sudo apt install python3-git`
 - Jinja >= 2.10
   - Ubuntu: `sudo apt install python3-jinja2`
+- GitPython >= 3.0 (for tests)
+  - Ubuntu: `sudo apt install python3-git`
 
 This program has been tested on Ubuntu running under WSL2.
 Please test it on your environment and send a report or a pull request.

@@ -11,8 +11,6 @@ import shutil
 import subprocess
 import zipfile
 
-import git
-
 BACKUP_DATE_PAT = re.compile(r'\d{4}-\d{2}-\d{2}_\d{6}')
 
 logger = logging.getLogger(__name__)
@@ -20,7 +18,18 @@ logger = logging.getLogger(__name__)
 class Git:
     def __init__(self, kicad_proj_dir):
         self.kicad_proj_dir = kicad_proj_dir
-        self.git_repo = git.Repo(self.kicad_proj_dir, search_parent_directories=True)
+
+        p = kicad_proj_dir
+        self.git_root = None
+        while True:
+            if (p / '.git').is_dir():
+                self.git_root = p
+                break
+            if p == p.parent:
+                # '/' に到達してしまった
+                break
+            else:
+                p = p.parent
 
     def extract_file(self, commit_id, file_name, dst_path):
         '''
@@ -34,15 +43,9 @@ class Git:
             shutil.copy(file_path, dst_path)
             return
 
-        rel_path = file_path.relative_to(self.git_repo.working_tree_dir)
-        '''
-        subprocess を使わなくても git_repo.git.show(f'{commit_id}:{rel_path}') で
-        git show を実行可能だが、この場合は git show の出力が bytes ではなく str
-        になってしまう。改行コード含め、完全に同じバイナリを取り出したいので、
-        subprocess.run を使って bytes のままファイルへ書き出す。
-        '''
+        rel_path = file_path.relative_to(self.git_root)
         git_show_cmd = ['git', 'show', f'{commit_id}:{rel_path}']
-        res = subprocess.run(git_show_cmd, capture_output=True, cwd=self.git_repo.working_tree_dir)
+        res = subprocess.run(git_show_cmd, capture_output=True, cwd=self.git_root)
         with open(dst_path, 'wb') as f:
             f.write(res.stdout)
             pass

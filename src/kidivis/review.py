@@ -22,10 +22,10 @@ import tempfile
 import urllib.parse
 import uuid
 
-import git
 import jinja2
 
 from . import diffimg
+from . import repo
 
 LOG_LEVELS = ['debug', 'info', 'warning', 'error', 'critical']
 SCH_PROPERTY_PAT = re.compile(r'\(property\s+"(?P<name>[^"]+)"\s+"(?P<value>[^"]+)"')
@@ -89,30 +89,6 @@ def export_svgs(dst_dir_path, mode, file_path, kicad_cli, layers):
             os.rename(svg, svg.parent / new_name)
             logger.debug('file renamed: %s => %s', svg, svg.parent / new_name)
 
-def extract_file_git(git_repo, commit_id, file_path, dst_path):
-    logger.debug('extracting file: commit=%s file=%s dst=%s', commit_id, file_path, dst_path)
-    if dst_path.exists():
-        return
-
-    dst_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if commit_id is None:
-        # ワーキングツリーからファイル取得
-        shutil.copy(file_path, dst_path)
-        return
-
-    rel_path = Path(file_path).relative_to(git_repo.working_tree_dir)
-    '''
-    subprocess を使わなくても git_repo.git.show(f'{commit_id}:{rel_path}') で
-    git show を実行可能だが、この場合は git show の出力が bytes ではなく str
-    になってしまう。改行コード含め、完全に同じバイナリを取り出したいので、
-    subprocess.run を使って bytes のままファイルへ書き出す。
-    '''
-    git_show_cmd = ['git', 'show', f'{commit_id}:{rel_path}']
-    res = subprocess.run(git_show_cmd, capture_output=True, cwd=git_repo.working_tree_dir)
-    with open(dst_path, 'wb') as f:
-        f.write(res.stdout)
-
 def make_pcbsvg_filename(pcb_file_name, layer_name):
     l = layer_name.replace('.', '_')
     return f'{Path(pcb_file_name).stem}-{l}.svg'
@@ -137,27 +113,21 @@ def action_image(req, diff_base, diff_target, filename):
 
     base_file_path = base_dir / file_path.name
     target_file_path = target_dir / file_path.name
-    extract_file_git(req.git_repo,
-                     diff_base,
-                     file_path,
-                     base_file_path)
-    extract_file_git(req.git_repo,
-                     None if diff_target == 'WORK' else diff_target,
-                     file_path,
-                     target_file_path)
+
+    diff_target = None if diff_target == 'WORK' else diff_target
+    req.kicad_repo.extract_file(diff_base, file_path.name, base_file_path)
+    req.kicad_repo.extract_file(diff_target, file_path.name, target_file_path)
 
     if mode == 'sch':
         # 階層シートの回路図を持ってこないと階層シートの SVG が空になってしまう
         sheets = get_sch_subsheets_recursive(req.sch_path)
         for sheet in sheets:
-            extract_file_git(req.git_repo,
-                             diff_base,
-                             req.sch_path.parent / sheet.file,
-                             base_dir / sheet.file)
-            extract_file_git(req.git_repo,
-                             None if diff_target == 'WORK' else diff_target,
-                             req.sch_path.parent / sheet.file,
-                             target_dir / sheet.file)
+            req.kicad_repo.extract_file(diff_base,
+                                        sheet.file,
+                                        base_dir / sheet.file)
+            req.kicad_repo.extract_file(diff_target,
+                                        sheet.file,
+                                        target_dir / sheet.file)
 
     if mode == 'pcb':
         base_svg_path = base_dir / mode / make_pcbsvg_filename(file_path.name, obj)
@@ -293,9 +263,9 @@ class HTTPRequestHandler(http.server.BaseHTTPRequestHandler):
     ソケットのタイムアウト設定で凌ぐことにする。
     '''
 
-    def __init__(self, tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers, *args, **kwargs):
+    def __init__(self, tmp_dir_path, kicad_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers, *args, **kwargs):
         self.tmp_dir_path = tmp_dir_path
-        self.git_repo = git_repo
+        self.kicad_repo = kicad_repo
         self.jinja_env = jinja_env
         self.pcb_path = pcb_path
         self.sch_path = sch_path
@@ -450,16 +420,12 @@ def main():
     pcb_path, sch_path = determine_pcb_sch([Path(f).absolute() for f in args.files])
     logger.info('conf="%s" pcb="%s" sch="%s"', args.conf, pcb_path, sch_path)
 
-    git_repo = None
-    try:
-        git_repo = git.Repo(args.files[0], search_parent_directories=True)
-    except git.exc.InvalidGitRepositoryError:
-        logger.info('No git repository.')
+    kicad_proj_dir = (pcb_path or sch_path).parent
+    git_repo = repo.Git(kicad_proj_dir)
+    backups_repo = repo.Backups(kicad_proj_dir)
+    kicad_repo = repo.Repo(git_repo, backups_repo)
 
-    if git_repo:
-        # Git ワーキングツリーのルート
-        git_root = Path(git_repo.working_tree_dir)
-        logger.info('git work tree: %s', git_root)
+    logger.info('kicad project directory: %s', kicad_proj_dir)
 
     host = conf['server']['host']
     port = conf['server']['port']
@@ -478,7 +444,7 @@ def main():
             loader=jinja2.FileSystemLoader(str(Path(__file__).parent / 'templates')),
             autoescape=jinja2.select_autoescape()
         )
-        create_handler = handler_factory(tmp_dir_path, git_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers)
+        create_handler = handler_factory(tmp_dir_path, kicad_repo, jinja_env, pcb_path, sch_path, kicad_cli, layers)
         with http.server.HTTPServer((host, port), create_handler) as server:
             print(f'Serving HTTP on {host} port {port}'
                   + f' (http://{access_host}:{port}/) ...')
