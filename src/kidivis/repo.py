@@ -28,18 +28,13 @@ class Git:
         commit_id が None なら、ワーキングツリーのファイルをそのまま dst_path へコピーする。
         '''
         file_path = self.kicad_proj_dir / file_name
-        logger.debug('extracting file: commit=%s file=%s dst=%s', commit_id, file_path, dst_path)
-        if dst_path.exists():
-            return
-
-        dst_path.parent.mkdir(parents=True, exist_ok=True)
 
         if commit_id is None:
             # ワーキングツリーからファイル取得
             shutil.copy(file_path, dst_path)
             return
 
-        rel_path = Path(file_path).relative_to(self.git_repo.working_tree_dir)
+        rel_path = file_path.relative_to(self.git_repo.working_tree_dir)
         '''
         subprocess を使わなくても git_repo.git.show(f'{commit_id}:{rel_path}') で
         git show を実行可能だが、この場合は git show の出力が bytes ではなく str
@@ -79,6 +74,11 @@ class Repo:
         version が日付なら backups ディレクトリから、
         日付以外なら Git リポジトリからファイルを抽出する。
         '''
+        logger.debug('extract_file: ver=%s file=%s dst=%s', version, file_name, dst_path)
+        if dst_path.exists():
+            return
+        dst_path.parent.mkdir(parents=True, exist_ok=True)
+
         if version is None or BACKUP_DATE_PAT.match(version) is None:
             return self.git_repo.extract_file(version, file_name, dst_path)
         else:

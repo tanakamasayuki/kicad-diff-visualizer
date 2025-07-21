@@ -46,16 +46,16 @@ class TestRepo(unittest.TestCase):
         shutil.rmtree(self.tmpdir)
 
     def test_extract_file(self):
-        dst_path = self.extract_dir / 'sample.kicad_sch'
+        dst_path = self.extract_dir / 'name1/name2.kicad_sch'
         self.repo.extract_file(None, 'sample.kicad_sch', dst_path)
         self.assertFalse(diff_files(dst_path, kicad_files_dir / 'sample3/sample.kicad_sch'))
 
-        dst_path = self.extract_dir / 'sample_git.kicad_sch'
+        dst_path = self.extract_dir / 'name3/name4.kicad_sch'
         self.repo.extract_file('HEAD^', 'sample.kicad_sch', dst_path)
         self.assertFalse(diff_files(dst_path, kicad_files_dir / 'sample1/sample.kicad_sch'))
 
         # have_subsheets-2025-07-19_113432.zip
-        dst_path = self.extract_dir / 'display_bak.kicad_sch'
+        dst_path = self.extract_dir / 'name5/name6.kicad_sch'
         self.repo.extract_file('2025-07-19_113432', 'display.kicad_sch', dst_path)
         zf = zipfile.ZipFile(kicad_files_dir / 'have_subsheets/have_subsheets-backups/have_subsheets-2025-07-19_113432.zip')
         zf.extract('display.kicad_sch', self.tmpdir)
